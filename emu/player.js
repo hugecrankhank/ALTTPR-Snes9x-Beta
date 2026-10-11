@@ -105,6 +105,16 @@
     '.s9x-touch .sm { bottom: 6px; width: calc(var(--pad) * .42); height: calc(var(--pad) * .17); border-radius: 99px; background: #3a414c;',
     '  font-size: calc(var(--pad) * .07); letter-spacing: .05em; }',
     '.s9x-touch .sm.sel { right: calc(50% + 4px); } .s9x-touch .sm.sta { left: calc(50% + 4px); }',
+    /* controller beside the picture instead of over it (setTouchPlacement('outside')):
+       upright, the picture on top and the controller under it, shoulder buttons and
+       Select/Start in a row just below the picture; sideways, the picture in the
+       middle with the D-pad on the left and the buttons on the right */
+    '.s9x.out-port .s9x-touch .sh, .s9x.out-port .s9x-touch .sm { top: var(--sh-top); bottom: auto; }',
+    '.s9x.out-port .s9x-touch .dpad, .s9x.out-port .s9x-touch .face { bottom: var(--ctl-b); }',
+    '.s9x.out-land .s9x-touch .sm { bottom: auto; top: calc(14px + var(--pad) * .23); }',
+    '.s9x.out-land .s9x-touch .sm.sel { left: max(8px, env(safe-area-inset-left)); right: auto; }',
+    '.s9x.out-land .s9x-touch .sm.sta { right: max(8px, env(safe-area-inset-right)); left: auto; }',
+    '.s9x.out-land .s9x-touch .dpad, .s9x.out-land .s9x-touch .face { bottom: 12px; }',
     /* menu */
     '.s9x-menu { position: absolute; inset: 0; z-index: 40; background: rgba(10,13,18,.94); color: #e6e9ee; overflow-y: auto;',
     '  font: 14px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; user-select: none; }',
@@ -185,13 +195,54 @@
   }
 
   // Controller size follows the game box (bigger box, bigger buttons).
+  // 'overlay' (default): the controller sits over the picture.
+  // 'outside': with the controller showing, the picture shrinks to leave it
+  // room, below the picture when upright and on both sides when sideways.
+  var placement = 'overlay';
+  function setCanvasBox(x, y, w, h) {
+    var st = canvas.style;
+    if (x == null) { st.left = st.top = st.width = st.height = ''; return; }
+    st.left = Math.round(x) + 'px'; st.top = Math.round(y) + 'px';
+    st.width = Math.round(w) + 'px'; st.height = Math.round(h) + 'px';
+  }
   function layoutTouch() {
     var w = root.clientWidth, h = root.clientHeight;
     if (!w || !h) return;
-    var pad = Math.max(84, Math.min(w * 0.31, h * 0.42, 180)) * (cfg.size || 1);
+    var size = cfg.size || 1, pad, op = cfg.opacity;
+    var out = placement === 'outside' && root.classList.contains('touch');
+    var port = out && h >= w * 0.9;
+    root.classList.toggle('out-port', port);
+    root.classList.toggle('out-land', out && !port);
+    var ar = cfg.aspect === '4:3' ? 4 / 3 : 8 / 7;
+    if (!out) {
+      setCanvasBox(null);
+      pad = Math.max(84, Math.min(w * 0.31, h * 0.42, 180)) * size;
+    } else if (port) {
+      // picture across the full width on top; the rest is the controller
+      var want = Math.min(w * 0.40, 210) * size;      // the controller at full size
+      var picH = Math.max(Math.min(w / ar, h - (want * 1.23 + 30)), h * 0.35);
+      var zone = h - picH, row = 0;
+      pad = Math.max(72, Math.min(w * 0.40, 210, (zone - 30) / 1.23)) * size;
+      row = pad * 0.23;
+      setCanvasBox(0, 0, w, picH);
+      touchEl.style.setProperty('--sh-top', Math.round(picH + 8) + 'px');
+      var rest = zone - row - 16;   // under the shoulder row
+      touchEl.style.setProperty('--ctl-b', Math.max(8, Math.round((rest - pad) / 2)) + 'px');
+      op = Math.max(op, 0.85);      // nothing to see through now
+    } else {
+      // picture in the middle at full height; controls in the side columns
+      pad = Math.max(84, Math.min(h * 0.42, w * 0.22, 190)) * size;
+      var picW = Math.max(Math.min(h * ar, w - 2 * (pad + 20)), w * 0.4);
+      setCanvasBox((w - picW) / 2, 0, picW, h);
+      op = Math.max(op, 0.85);
+    }
     touchEl.style.setProperty('--pad', Math.round(pad) + 'px');
-    touchEl.style.setProperty('--op', cfg.opacity);
-    if (video) video.dirty = true;
+    touchEl.style.setProperty('--op', op);
+    if (video) { video.dirty = true; try { video.fit(); } catch (e) {} }
+  }
+  function setTouchPlacement(m) {
+    placement = m === 'outside' ? 'outside' : 'overlay';
+    if (root) layoutTouch();
   }
 
   var coarse = window.matchMedia ? window.matchMedia('(pointer: coarse)') : { matches: false };
@@ -319,6 +370,7 @@
     if (!video) return;
     video.aspect = cfg.aspect === '4:3' ? 4 / 3 : cfg.aspect === 'fill' ? 0 : 8 / 7;
     video.dirty = true;
+    if (placement === 'outside') layoutTouch();   // the picture's box follows the shape
   }
   function applyFilter() {
     if (!video) return;
@@ -560,7 +612,7 @@
   }
 
   window.Snes9xPlayer = {
-    boot: boot, hooks: hooks,
+    boot: boot, hooks: hooks, setTouchPlacement: setTouchPlacement,
     get emulator() { return running ? ejs : null; },
     get core() { return running ? core : null; },
     get paused() { return paused; },

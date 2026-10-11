@@ -54,13 +54,17 @@
   }
   // Desktop (desktop.js) is the classic layout plus pop-out windows, so for
   // this file it is the classic layout (wantMode false).
+  // Tracker off (tracker-mode.js): just the game, so none of the tracker layouts
+  function trackerOff() { return !!(window.UnifiedTracker && window.UnifiedTracker.off()); }
   function wantDesktop() {
     if (!window.UnifiedDesktop) return false;   // editions without pop-outs (Lite)
+    if (trackerOff()) return false;
     var p = pref();
     if (p === 'desktop') return true;
     return p === 'auto' && finePointer() && window.innerWidth > 900;
   }
   function wantMode() {
+    if (trackerOff()) return false;
     var p = pref(), W = window.innerWidth, H = window.innerHeight;
     if (p === 'tablet') return p;
     if (p === 'stacked') return 'portrait';
@@ -336,6 +340,10 @@
   function load() {
     if (!urls) return;
     var blank = 'about:blank';
+    if (trackerOff()) {
+      ['items-frame', 'map-frame', 'tab-items', 'tab-map'].forEach(function (id) { $(id).src = blank; });
+      return;
+    }
     mid = null; lastT = lastB = null; tries = 0; k = 1; itemsH = 400;
     settingsOpen = false; $('tab-map').style.visibility = ''; $('tab-items').style.zIndex = '';
     if (on === 'tablet') applyK(); else if (on === 'portrait') placePortrait();
@@ -385,6 +393,12 @@
       if (on === null) apply(true); else load();
     },
     setPref: function (p) { try { localStorage.setItem(KEY, p); } catch (e) {} apply(false); },
+    // the Tracker choice changed (tracker-mode.js): new folder, or on/off
+    refresh: function (u) {
+      urls = u || urls;
+      if (window.UnifiedDesktop) window.UnifiedDesktop.setUrls(urls);
+      apply(true);
+    },
     pref: pref,
     fit: placeGame,
   };

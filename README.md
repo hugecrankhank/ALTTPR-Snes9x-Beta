@@ -98,6 +98,30 @@ links, and browsing the sprite library.
 On iPhone/iPad, also **Share → Add to Home Screen** and open it from there: iOS can
 clear a website's saved files after a few weeks without use, but not a Home Screen app's.
 
+## Tracker: newest release, beta or off
+
+The **Tracker** choice in the header (behind ⚙ on phones) picks which of
+Hutch's trackers runs, and switches straight away, mid-game too:
+
+- **Newest release**: `tracker/`, his
+  [ALTTPR-Tracker](https://github.com/hutchch/ALTTPR-Tracker).
+- **Beta**: `tracker-beta/`, the release with the files from his
+  [ALTTPR-Tracker-Beta](https://github.com/hutchch/ALTTPR-Tracker-Beta) laid over
+  it. That repository only holds the files a beta changes, and is empty between
+  betas (his v1.1.20 beta became the release on 8 Oct); then there's no
+  `tracker-beta/` and Beta shows "same as release right now".
+- **Off**: no tracker is loaded and the game fills the screen under the header,
+  in every layout. With the on-screen controller showing it moves off the
+  picture: under it when a phone or iPad is upright, on both sides when
+  sideways. With a tracker on, the controller overlays the game as before.
+  On computers, Timer and Game only stay in the header.
+
+`tools/update-hutch.py` refreshes both copies from his repositories (keeping
+the SNI shim line and the bottle pictures) and writes
+`tracker/hutch-versions.js`, which the menu reads for the version numbers. The
+deploy workflow runs it, so the site picks up his updates on every deploy and
+weekly; `--check` shows what would change.
+
 ## Desktop layout and pop-out windows
 
 - **Layout → Auto** picks *Desktop* on a computer with a mouse or trackpad (window

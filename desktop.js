@@ -436,14 +436,15 @@
     if (which === 'broadcast') {
       var bg = 'black';
       try { bg = localStorage.getItem('alttp-tracker-bg') || 'black'; } catch (e) {}
-      w = window.open('tracker/broadcast.html?bg=' + encodeURIComponent(bg), 'alttp-broadcast', 'popup=yes,width=500,height=230,resizable=yes');
+      w = window.open(base() + 'broadcast.html?bg=' + encodeURIComponent(bg), 'alttp-broadcast', 'popup=yes,width=500,height=230,resizable=yes');
     } else if (which === 'timer') {
-      w = window.open('tracker/timer.html', 'alttp-timer', 'popup=yes,width=340,height=150,resizable=yes');
+      w = window.open(base() + 'timer.html', 'alttp-timer', 'popup=yes,width=340,height=150,resizable=yes');
     }
     if (!w) blocked();
   }
 
   // ── loading the trackers ───────────────────────────────────────────────────
+  function base() { return window.UnifiedTracker ? window.UnifiedTracker.base() : 'tracker/'; }
   function withMobile(u) { return u + (u.indexOf('?') === -1 ? '?' : '&') + 'mobile=1'; }
   // From tablet.js, whenever new trackers are wanted (a new game, new
   // settings, or switching into Desktop).

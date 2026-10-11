@@ -36,6 +36,11 @@ jobs:
           else
             echo "Keeping the sprite list from the repository"; rm -f sprites.new.json
           fi
+      # Hutch's tracker: his newest release in tracker/, and his beta (when he
+      # has one) in tracker-beta/. If GitHub can't be reached, the copies in
+      # the repository are used.
+      - name: Refresh Hutch's tracker
+        run: python3 tools/update-hutch.py || { echo "Keeping the tracker copies from the repository"; git checkout -- tracker offline-files.json; git clean -fdq tracker-beta; }
       # Kara's branch: her generator packed for the browser, and the pinned
       # Pyodide (Python for the browser) it runs on
       - name: Pack Kara's generator

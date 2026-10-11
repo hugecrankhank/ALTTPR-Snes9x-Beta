@@ -1,6 +1,6 @@
 {
  "edition": "full",
- "version": "6c620ea65396",
+ "version": "0d805be22815",
  "cache": "alttpr-s9x-full-v1",
  "files": [
   "./",
@@ -123,6 +123,7 @@
   "sheet.js",
   "sprites.json",
   "sw.js",
+  "tracker-mode.js",
   "tablet.js",
   "tracker/.github/FUNDING.yml",
   "tracker/LICENSE",
@@ -309,6 +310,7 @@
   "emu/shaders/6xbrz.glsl",
   "emu/shaders/crt-pi.glsl",
   "emu/shaders/sharp-bilinear-simple.glsl",
-  "emu/shaders/stock.glsl"
+  "emu/shaders/stock.glsl",
+  "tracker/hutch-versions.js"
  ]
 }
