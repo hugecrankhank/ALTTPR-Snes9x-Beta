@@ -1,0 +1,16 @@
+{
+  "name": "alttpr-crowd-bridge",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TikTok LIVE gifts → effects in the ALTTPR Snes9x web app",
+  "type": "module",
+  "main": "bridge.mjs",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node bridge.mjs",
+    "test-mode": "node bridge.mjs --test"
+  },
+  "dependencies": {
+    "tiktok-live-connector": "^2.5.0"
+  }
+}

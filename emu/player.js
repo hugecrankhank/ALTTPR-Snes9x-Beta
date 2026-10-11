@@ -128,6 +128,11 @@
   var started = false, core = null, video = null, audio = null, input = null;
   var root, canvas, touchEl, menuEl, pill, toastEl, msgEl;
   var running = false, paused = false, ff = false, gameName = '', lastSram = null;
+  // Add-ons (crowd/effects.js) plug in here without touching the loop:
+  //   input(pad) -> pad   change the buttons the game sees this frame
+  //   frame(core)         runs after every emulated frame
+  //   menu {html(rerender), click(button, rerender), input(el)}  a section in the menu
+  var hooks = { input: null, frame: null, menu: null };
 
   function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
 
@@ -251,6 +256,7 @@
       '<table><tr><td></td><td class="hint">Keyboard</td><td class="hint">Controller</td></tr>' + rows + '</table>' +
       '<div class="acts" style="margin-top:8px"><button type="button" data-a="resetmap">Reset controls</button></div>' +
       (input.padName ? '<p class="hint">Controller: ' + input.padName.replace(/</g, '&lt;') + '</p>' : '') +
+      (hooks.menu ? hooks.menu.html(renderMenu) : '') +
       '<h4>Diagnostics</h4>' + diagnostics() +
       '</div>';
   }
@@ -265,8 +271,10 @@
       else if (a === 'fs') { closeMenu(); fullscreen(); }
       else if (a === 'resetmap') { input.keymap = Object.assign({}, EmuInput.DEFAULT_KEYS); input.padmap = Object.assign({}, EmuInput.DEFAULT_PAD); cfg.keymap = cfg.padmap = null; saveCfg(); renderMenu(); }
       else if (b.dataset.map) remap(b);
+      else if (b.dataset.ext && hooks.menu) hooks.menu.click(b, renderMenu);
     });
     menuEl.addEventListener('input', function (e) {
+      if (e.target.dataset.ext && hooks.menu && hooks.menu.input) { hooks.menu.input(e.target); return; }
       var s = e.target.dataset.s; if (!s) return;
       var v = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
       if (s === 'volume' || s === 'opacity' || s === 'size' || s === 'slot') v = +v;
@@ -401,6 +409,7 @@
     ema = ema ? ema * 0.95 + dt * 0.05 : dt;
     if (!running || paused) { try { video.draw(); } catch (e) {} return; }
     var frameMs = 1000 / core.fps, pad = input.read(), n = 0;
+    if (hooks.input) { try { pad = hooks.input(pad) | 0; } catch (e) { console.warn('[snes9x] input hook', e); } }
     var vsync = !ff && Math.abs(ema - frameMs) / frameMs < 0.01;
     if (vsync) { n = 1; acc = 0; }
     else {
@@ -413,6 +422,7 @@
       for (var i = 0; i < n; i++) {
         core.runFrame(pad, 0);
         stats.frames++;
+        if (hooks.frame) { try { hooks.frame(core); } catch (e) { console.warn('[snes9x] frame hook', e); } }
         var a = core.audio();
         if (!ff) { try { audio.push(a); } catch (e) {} }
       }
@@ -549,5 +559,11 @@
     });
   }
 
-  window.Snes9xPlayer = { boot: boot, get emulator() { return running ? ejs : null; } };
+  window.Snes9xPlayer = {
+    boot: boot, hooks: hooks,
+    get emulator() { return running ? ejs : null; },
+    get core() { return running ? core : null; },
+    get paused() { return paused; },
+    toast: function (msg) { if (toastEl) toast(msg); },
+  };
 })();

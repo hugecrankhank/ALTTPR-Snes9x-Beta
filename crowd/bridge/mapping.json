@@ -1,0 +1,26 @@
+{
+  "username": "your_tiktok_username",
+  "port": 21213,
+  "maxPerGift": 5,
+
+  "gifts": {
+    "Rose": "heal_1",
+    "TikTok": "rupees_plus",
+    "GG": "arrows_plus",
+    "Ice Cream Cone": "bombs_plus",
+    "Heart Me": "magic_full",
+    "Finger Heart": "invert",
+    "Doughnut": "rupees_minus",
+    "Hand Hearts": "no_sword",
+    "Confetti": "swap_by",
+    "Perfume": "hurt_2",
+    "Galaxy": "one_hit",
+    "Corgi": "heal_full"
+  },
+
+  "likes": { "every": 300, "effect": "heal_1" },
+  "follow": "rupees_plus",
+  "share": "bombs_plus",
+
+  "allowedOrigins": ["https://hugecrankhank.github.io", "http://localhost", "http://127.0.0.1"]
+}
