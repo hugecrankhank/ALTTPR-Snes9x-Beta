@@ -492,7 +492,11 @@
     build(container);
     var name = file.name || 'game.sfc';
     gameName = name.replace(/\.[^.]+$/, '');
-    var bytesP = file.bytes ? Promise.resolve(new Uint8Array(file.bytes)) : file.arrayBuffer().then(function (b) { return new Uint8Array(b); });
+    // A File/Blob is read with arrayBuffer(). (Not by testing for .bytes:
+    // Safari 18+ and new Chrome give every Blob a bytes() method.)
+    var bytesP = (typeof Blob !== 'undefined' && file instanceof Blob) || typeof file.arrayBuffer === 'function'
+      ? file.arrayBuffer().then(function (b) { return new Uint8Array(b); })
+      : Promise.resolve(new Uint8Array(file.bytes));
 
     watchGl();
     try { video = new Video(canvas); } catch (e) {
@@ -523,6 +527,7 @@
 
     return Promise.all([Snes9xCore.create(BASE + 'snes9x.wasm'), bytesP]).then(function (r) {
       core = r[0];
+      if (!r[1] || r[1].length < 0x8000) throw new Error('the ROM for "' + name + '" was empty (' + (r[1] ? r[1].length : 0) + ' bytes).');
       if (!core.load(r[1])) throw new Error('Snes9x could not load "' + name + '".');
       audio.setRate(core.sampleRate);
       return kvGet(sramKey());
