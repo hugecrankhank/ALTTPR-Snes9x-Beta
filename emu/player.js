@@ -251,6 +251,7 @@
       '<table><tr><td></td><td class="hint">Keyboard</td><td class="hint">Controller</td></tr>' + rows + '</table>' +
       '<div class="acts" style="margin-top:8px"><button type="button" data-a="resetmap">Reset controls</button></div>' +
       (input.padName ? '<p class="hint">Controller: ' + input.padName.replace(/</g, '&lt;') + '</p>' : '') +
+      '<h4>Diagnostics</h4>' + diagnostics() +
       '</div>';
   }
   function bindMenu() {
@@ -378,12 +379,27 @@
   // absorbs the tiny speed difference. Otherwise (120 Hz screens, throttled
   // windows) pace frames with a time accumulator.
   var acc = 0, last = 0, ema = 0;
+  // What happened, for the Diagnostics section of the menu.
+  var stats = { frames: 0, draws: 0, glLost: 0, glRestored: 0, error: null, started: 0 };
+  function stopWithError(where, e) {
+    stats.error = where + ': ' + (e && (e.message || e.name) || e);
+    console.error('[snes9x]', where, e);
+    running = false;
+    var m = el('div', 's9x-msg', '');
+    m.style.pointerEvents = 'auto'; m.style.flexDirection = 'column'; m.style.gap = '10px'; m.style.padding = '16px'; m.style.textAlign = 'center';
+    m.innerHTML = '<b style="color:#e5534b">Snes9x stopped</b><span></span>' +
+      '<button type="button" style="all:unset;cursor:pointer;padding:6px 14px;border-radius:6px;background:#1f6f3a;color:#fff">Reload</button>';
+    m.querySelector('span').textContent = stats.error;
+    m.querySelector('button').onclick = function () { location.reload(); };
+    root.appendChild(m);
+  }
   function tick(now) {
     requestAnimationFrame(tick);
-    video.fit();
+    if (!video) return;
+    try { video.fit(); } catch (e) {}
     var dt = last ? Math.min(now - last, 100) : 16.7; last = now;
     ema = ema ? ema * 0.95 + dt * 0.05 : dt;
-    if (!running || paused) { video.draw(); return; }
+    if (!running || paused) { try { video.draw(); } catch (e) {} return; }
     var frameMs = 1000 / core.fps, pad = input.read(), n = 0;
     var vsync = !ff && Math.abs(ema - frameMs) / frameMs < 0.01;
     if (vsync) { n = 1; acc = 0; }
@@ -393,13 +409,52 @@
       var max = ff ? 8 : 3;
       if (n > max) { n = max; acc = 0; }
     }
-    for (var i = 0; i < n; i++) {
-      core.runFrame(pad, 0);
-      var a = core.audio();
-      if (!ff) audio.push(a);
+    try {
+      for (var i = 0; i < n; i++) {
+        core.runFrame(pad, 0);
+        stats.frames++;
+        var a = core.audio();
+        if (!ff) { try { audio.push(a); } catch (e) {} }
+      }
+    } catch (e) { stopWithError('Emulator', e); return; }
+    try {
+      if (n) video.upload(core.frame());
+      video.draw();
+      stats.draws++;
+    } catch (e) {
+      // A graphics error shouldn't stop the game: drop to the plainest filter.
+      if (!stats.gfxErr) { stats.gfxErr = String(e && e.message || e); console.warn('[snes9x] video', e); }
+      if (cfg.filter !== 'nearest') { cfg.filter = 'nearest'; applyFilter(); }
     }
-    if (n) video.upload(core.frame());
-    video.draw();
+  }
+  // iOS can take the graphics context away under memory pressure (e.g. right
+  // after Kara's generator ran in the browser); the picture then goes black.
+  // Ask for it back and rebuild the renderer when it returns.
+  function watchGl() {
+    canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); stats.glLost++; });
+    canvas.addEventListener('webglcontextrestored', function () {
+      stats.glRestored++;
+      try { video = new Video(canvas); applyAspect(); applyFilter(); if (running) video.upload(core.frame()); }
+      catch (e) { stats.gfxErr = String(e && e.message || e); }
+    });
+  }
+  function diagnostics() {
+    var gl = video && video.gl, f = core && core.loaded ? core.frame() : null, lit = 0;
+    if (f) { for (var i = 0; i < f.data.length; i += 37) if (f.data[i]) lit++; lit = Math.round(lit * 3700 / f.data.length); }
+    var info = [
+      ['Game', gameName],
+      ['ROM', core && core.loaded ? (core.rom().length / 1048576).toFixed(2) + ' MB' : 'not loaded'],
+      ['Running', running ? (paused ? 'paused' : 'yes') : 'no'],
+      ['Frames run', stats.frames + ' (' + Math.round(stats.frames / Math.max(1, (performance.now() - stats.started) / 1000)) + '/s)'],
+      ['Picture', f ? f.w + '×' + f.h + ', ' + lit + '% lit' : '—'],
+      ['Filter', (video && video.presetId) || cfg.filter],
+      ['Graphics', gl ? (gl.isContextLost() ? 'LOST' : 'ok') + ', lost ' + stats.glLost + '×, restored ' + stats.glRestored + '×' : 'none'],
+      ['Audio', audio && audio.ctx ? audio.ctx.state + ' @ ' + audio.ctx.sampleRate : 'not started'],
+    ];
+    if (stats.error) info.push(['Error', stats.error]);
+    if (stats.gfxErr) info.push(['Video error', stats.gfxErr]);
+    return info.map(function (r) { return '<div class="row"><span class="hint">' + r[0] + '</span><span style="text-align:right;word-break:break-word">' +
+      String(r[1]).replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</span></div>'; }).join('');
   }
   // A hidden page gets no animation frames, but the app expects the game to
   // keep running when a desktop window is merely covered by tracker windows;
@@ -439,6 +494,7 @@
     gameName = name.replace(/\.[^.]+$/, '');
     var bytesP = file.bytes ? Promise.resolve(new Uint8Array(file.bytes)) : file.arrayBuffer().then(function (b) { return new Uint8Array(b); });
 
+    watchGl();
     try { video = new Video(canvas); } catch (e) {
       msgEl.textContent = 'This browser has no WebGL2, which the emulator needs. Try an up-to-date Safari, Chrome or Firefox.';
       return Promise.reject(e);
@@ -477,6 +533,7 @@
       setInterval(flushSram, 3000);
       msgEl.remove();
       running = true;
+      stats.started = performance.now();
       window.EJS_emulator = ejs;
       setPaused(false);
       if (typeof window.EJS_onGameStart === 'function') { try { window.EJS_onGameStart(); } catch (e) { console.error(e); } }
