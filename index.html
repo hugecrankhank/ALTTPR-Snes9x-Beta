@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>ALTTPR Snes9x</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#161b22">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ALTTPR S9X">
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --line: #2a313c; --text: #e6e9ee;
+    --dim: #8b95a3; --accent: #5fbf6f; --warn: #e3b341; --bad: #e5534b;
+    --pad-opacity: .55;
+    --sat: env(safe-area-inset-top); --sab: env(safe-area-inset-bottom);
+    --sal: env(safe-area-inset-left); --sar: env(safe-area-inset-right);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overscroll-behavior: none; }
+  body { display: grid; grid-template-rows: auto 1fr; height: 100dvh; overflow: hidden; }
+  [hidden] { display: none !important; }
+
+  header { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center;
+    padding: max(8px, var(--sat)) max(14px, var(--sar)) 8px max(14px, var(--sal));
+    border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { font-size: 15px; margin: 0 6px 0 0; letter-spacing: .02em; white-space: nowrap; }
+  header h1 span { color: var(--accent); }
+  select, button, .filebtn { background: #0d1117; color: var(--text); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 10px; font: inherit; font-size: 13px; cursor: pointer; }
+  button:hover, .filebtn:hover, select:hover { border-color: #3d4654; }
+  .filebtn.primary, button.primary { background: #1f6f3a; border-color: #2a8a4a; }
+  #rom-input { display: none; }
+  .spacer { flex: 1; }
+  .pill { font-size: 12px; color: var(--dim); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+  .pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--dim); display: inline-block; }
+  #pad-status.on i, #link-status.live i { background: var(--accent); }
+
+  main { display: grid; grid-template-columns: minmax(0, 1fr) auto; min-height: 0; }
+
+  /* ── game stage ─────────────────────────────────────────────────── */
+  #stage { position: relative; min-height: 0; display: flex; flex-direction: column; background: #000; }
+  #screen-wrap { position: relative; flex: 1; min-height: 0; }
+  #screen { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 14px;
+    align-items: center; justify-content: center; text-align: center; padding: 24px; color: var(--dim); background: #000; }
+  #placeholder h2 { color: var(--text); margin: 0; font-size: 20px; }
+  #placeholder p { max-width: 460px; margin: 0; }
+  #placeholder a { color: var(--accent); }
+  #placeholder .row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  #placeholder .filebtn, #placeholder button { font-size: 15px; padding: 9px 16px; }
+
+  #bar { display: flex; gap: 6px; padding: 6px max(10px, var(--sar)) 6px max(10px, var(--sal));
+    background: var(--panel); border-top: 1px solid var(--line); align-items: center; overflow-x: auto; scrollbar-width: none; }
+  #bar button { min-width: 38px; padding: 6px 9px; white-space: nowrap; }
+  #bar button.on { background: #1f6f3a; border-color: #2a8a4a; }
+  #bar .sep { flex: 1; }
+  #btn-tracker { display: none; }
+
+  #toast { position: absolute; left: 50%; top: 14px; transform: translate(-50%, -8px); opacity: 0;
+    background: rgba(22,27,34,.92); border: 1px solid var(--line); padding: 6px 12px; border-radius: 8px;
+    font-size: 13px; pointer-events: none; transition: opacity .15s, transform .15s; z-index: 30; }
+  #toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ── touch controls (hidden unless body.touch-on) ───────────────── */
+  #touch { display: none; position: relative; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    touch-action: none; }
+  body.touch-on #touch { display: grid; }
+  #touch .btn, #touch .dpad { opacity: var(--pad-opacity); transition: opacity .1s; }
+  .btn { display: flex; align-items: center; justify-content: center; font-weight: 700; color: #fff;
+    border-radius: 50%; border: 2px solid rgba(255,255,255,.25); font-size: 17px; text-shadow: 0 1px 2px #000; }
+  .btn.down { opacity: 1 !important; filter: brightness(1.35); transform: scale(.94); }
+  /* Pad and face buttons scale with --pad (their box size). */
+  #touch { --pad: 168px; }
+  .face { position: relative; width: var(--pad); height: var(--pad); }
+  .face .btn { position: absolute; width: 35%; height: 35%; font-size: calc(var(--pad) * .1); }
+  .face [data-btn=X] { left: 32.5%; top: 0; background: #2f5fbf; }
+  .face [data-btn=A] { right: 0; top: 32.5%; background: #c0392b; }
+  .face [data-btn=B] { left: 32.5%; bottom: 0; background: #d4a017; }
+  .face [data-btn=Y] { left: 0; top: 32.5%; background: #2e8b57; }
+  /* Invisible combo zones between buttons: a thumb on the gap presses both */
+  .face .combo { position: absolute; width: 18%; height: 18%; border: 0; background: transparent; }
+  .face [data-btn="B,A"] { right: 13%; bottom: 13%; }
+  .face [data-btn="B,Y"] { left: 13%; bottom: 13%; }
+  .face [data-btn="X,A"] { right: 13%; top: 13%; }
+  .face [data-btn="X,Y"] { left: 13%; top: 13%; }
+  .dpad { position: relative; width: var(--pad); height: var(--pad); border-radius: 50%; background: rgba(255,255,255,.06); }
+  .dpad::before, .dpad::after { content: ""; position: absolute; background: #3a414c; border-radius: 8px; }
+  .dpad::before { left: 33.3%; top: 5%; width: 33.4%; height: 90%; }
+  .dpad::after { top: 33.3%; left: 5%; height: 33.4%; width: 90%; }
+  .dpad i { position: absolute; z-index: 1; width: 0; height: 0; border: 9px solid transparent; }
+  .dpad .u { left: calc(50% - 9px); top: 10%; border-bottom-color: #8b95a3; }
+  .dpad .d { left: calc(50% - 9px); bottom: 10%; border-top-color: #8b95a3; }
+  .dpad .l { top: calc(50% - 9px); left: 10%; border-right-color: #8b95a3; }
+  .dpad .r { top: calc(50% - 9px); right: 10%; border-left-color: #8b95a3; }
+  .dpad.d-up .u { border-bottom-color: #fff; } .dpad.d-down .d { border-top-color: #fff; }
+  .dpad.d-left .l { border-right-color: #fff; } .dpad.d-right .r { border-left-color: #fff; }
+  .dpad.d-up, .dpad.d-down, .dpad.d-left, .dpad.d-right { opacity: 1; }
+  .shoulder { width: 84px; height: 36px; border-radius: 10px; background: #3a414c; font-size: 15px; }
+  .small { width: 70px; height: 26px; border-radius: 13px; background: #3a414c; font-size: 11px; letter-spacing: .06em; }
+
+  /* ── tracker panel ──────────────────────────────────────────────── */
+  aside { width: var(--tracker-w, 548px); border-left: 1px solid var(--line); display: flex;
+    flex-direction: column; min-height: 0; background: #000; }
+  aside .tabs { display: flex; border-bottom: 1px solid var(--line); background: var(--panel); align-items: center; }
+  aside .tabs button { border: 0; border-radius: 0; background: transparent; padding: 8px 14px; color: var(--dim); }
+  aside .tabs button.on { color: var(--text); box-shadow: inset 0 -2px var(--accent); }
+  #frames { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #frames iframe { border: 0; background: #000; display: block; }
+  #items-wrap { height: 400px; flex: none; overflow: hidden; position: relative; }
+  #items-frame { width: 100%; height: 100%; transform-origin: 0 0; }
+  #map-frame { width: 100%; flex: 1; min-height: 0; }
+  #frames.items-only #map-frame { display: none; }
+  #frames.items-only #items-wrap { flex: 1; height: auto; }
+  #frames.map-only #items-wrap { display: none; }
+
+  /* ── settings dialog ────────────────────────────────────────────── */
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 12px;
+    padding: 0; width: min(440px, calc(100vw - 24px)); max-height: calc(100dvh - 40px); }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  dialog .hd { display: flex; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); }
+  dialog .hd h2 { margin: 0; font-size: 16px; flex: 1; }
+  dialog .bd { padding: 6px 16px 16px; }
+  dialog h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--dim); margin: 16px 0 6px; }
+  dialog label { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; }
+  dialog label select, dialog label input[type=range] { width: 58%; }
+  dialog .hint { color: var(--dim); font-size: 12px; margin: 4px 0 0; }
+  kbd { background: #0d1117; border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font-size: 12px; }
+
+  /* ── desktop with touch forced on: pad overlays the sides of the game ── */
+  @media (min-width: 901px) {
+    body.touch-on #touch { position: absolute; inset: auto 0 0 0; grid-template-columns: 1fr auto 1fr; padding: 18px 24px;
+      align-items: end; pointer-events: none; }
+    body.touch-on #touch > * { pointer-events: auto; }
+    body.touch-on #touch .left { justify-self: start; } body.touch-on #touch .right { justify-self: end; }
+    #touch .shoulders { display: none; }
+    #touch .mids { display: flex; gap: 12px; align-self: end; }
+  }
+  #touch .left, #touch .right { display: flex; flex-direction: column; gap: 14px; align-items: center; }
+
+  /* ── phones, portrait: game, toolbar, controls, then tracker below ─── */
+  @media (max-width: 900px) and (orientation: portrait) {
+    header { gap: 6px 10px; }
+    header h1 { font-size: 14px; }
+    #pad-status { display: none; }
+    main { display: flex; flex-direction: column; overflow: hidden; }
+    #stage { flex: none; }
+    #screen-wrap { flex: none; width: 100%; aspect-ratio: 8 / 7; max-height: 52dvh; }
+    #touch { --pad: min(156px, 36vw, 24dvh); }
+    .small { width: 62px; }
+    body.touch-on #touch { grid-template-columns: 1fr auto 1fr; grid-template-areas: "sl . sr" "dp mid fa";
+      align-items: center; padding: 10px max(12px, var(--sal)) 12px; gap: 6px 0; background: #0b0e12; border-top: 1px solid var(--line); }
+    #touch .left, #touch .right, #touch .shoulders { display: contents; }
+    #touch .shoulder.l { grid-area: sl; justify-self: start; } #touch .shoulder.r { grid-area: sr; justify-self: end; }
+    #touch .dpad { grid-area: dp; justify-self: start; } #touch .face { grid-area: fa; justify-self: end; }
+    #touch .mids { grid-area: mid; display: flex; flex-direction: column; gap: 14px; }
+    aside { flex: 1; width: 100%; border-left: 0; border-top: 1px solid var(--line); min-height: 0; }
+    #frames { display: block; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+    #items-wrap, #frames.items-only #items-wrap { height: 400px; }
+    #map-frame { height: calc(200vw + 90px); }
+    #frames.map-only #map-frame, #frames.items-only #items-wrap { display: block; }
+  }
+
+  /* ── phones, landscape: full-height game, pad on the sides, tracker in a drawer ── */
+  @media (orientation: landscape) and (max-height: 540px) {
+    body { grid-template-rows: 1fr; }
+    header { display: none; }
+    main { display: block; position: relative; }
+    #stage { position: absolute; inset: 0; }
+    #bar { position: absolute; top: max(4px, var(--sat)); left: 50%; transform: translateX(-50%); z-index: 20;
+      background: rgba(22,27,34,.75); border: 1px solid var(--line); border-radius: 10px; padding: 4px; opacity: .8; }
+    #bar .sep { display: none; }
+    #bar button { padding: 4px 8px; font-size: 12px; min-width: 32px; }
+    #btn-tracker { display: inline-block; }
+    body.touch-on #touch { position: absolute; inset: 0; display: block; pointer-events: none; z-index: 10; }
+    #touch .left, #touch .right { position: absolute; bottom: max(14px, var(--sab)); pointer-events: auto; gap: 10px; }
+    #touch .left { left: max(18px, var(--sal)); } #touch .right { right: max(18px, var(--sar)); }
+    #touch .shoulders { display: block; } #touch .mids { display: block; }
+    #touch .shoulder { position: absolute; top: max(10px, var(--sat)); pointer-events: auto; }
+    #touch .shoulder.l { left: max(18px, var(--sal)); } #touch .shoulder.r { right: max(18px, var(--sar)); }
+    #touch .mids .small { position: absolute; bottom: max(12px, var(--sab)); pointer-events: auto; }
+    #touch .mids .sel { left: calc(50% - 78px); } #touch .mids .sta { left: calc(50% + 8px); }
+    #touch { --pad: min(150px, 40dvh); }
+    aside { position: absolute; top: 0; bottom: 0; right: 0; width: min(420px, 60vw); z-index: 40; transform: translateX(100%);
+      transition: transform .25s ease; box-shadow: -8px 0 24px rgba(0,0,0,.5); padding-right: var(--sar); }
+    body.drawer-open aside { transform: none; }
+    #frames { display: block; overflow-y: auto; }
+    #items-wrap, #frames.items-only #items-wrap { height: 400px; }
+    #map-frame { height: 900px; }
+    #frames.map-only #map-frame, #frames.items-only #items-wrap { display: block; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>ALTTPR <span>Snes9x</span></h1>
+  <label class="filebtn primary" for="rom-input">Load ROM…</label>
+  <!-- No `accept` filter: iOS doesn't know the .sfc/.smc types and would gray them out. -->
+  <input type="file" id="rom-input">
+  <div class="spacer"></div>
+  <button id="install-btn" hidden>Install app</button>
+  <div id="pad-status" class="pill"><i></i><span>No controller</span></div>
+  <div id="link-status" class="pill"><i></i><span>No game loaded</span></div>
+</header>
+
+<main>
+  <div id="stage">
+    <div id="screen-wrap">
+      <canvas id="screen"></canvas>
+      <div id="placeholder">
+        <h2>Load a randomized ROM to start</h2>
+        <p>Generate a seed at <a href="https://alttpr.com/en/randomizer" target="_blank" rel="noopener">alttpr.com</a>
+           with your own Japanese 1.0 ALttP ROM, download the patched <code>.sfc</code>, then load it here.
+           The tracker updates automatically as you play.</p>
+        <div class="row">
+          <label class="filebtn primary" for="rom-input">Load ROM…</label>
+          <button id="resume-btn" hidden></button>
+        </div>
+        <p style="font-size:12px">Runs Snes9x entirely in your browser. Your ROM and saves never leave this device.</p>
+      </div>
+      <div id="toast"></div>
+    </div>
+    <div id="bar">
+      <button id="btn-pause" title="Pause (P)">❚❚</button>
+      <button id="btn-ff" title="Fast-forward (hold Tab)">⏩</button>
+      <button id="btn-save" title="Save state (F5)">Save</button>
+      <button id="btn-load" title="Load state (F8)">Load</button>
+      <button id="btn-reset" title="Reset">Reset</button>
+      <span class="sep"></span>
+      <button id="btn-tracker" title="Tracker">Tracker</button>
+      <button id="btn-fs" title="Fullscreen">⛶</button>
+      <button id="btn-menu" title="Settings">⚙</button>
+    </div>
+    <div id="touch" aria-hidden="true">
+      <div class="shoulders"><div class="btn shoulder l" data-btn="L">L</div><div class="btn shoulder r" data-btn="R">R</div></div>
+      <div class="left"><div class="dpad" data-dpad><i class="u"></i><i class="d"></i><i class="l"></i><i class="r"></i></div></div>
+      <div class="mids"><div class="btn small sel" data-btn="SELECT">SELECT</div><div class="btn small sta" data-btn="START">START</div></div>
+      <div class="right">
+        <div class="face">
+          <div class="btn" data-btn="X">X</div><div class="btn" data-btn="A">A</div>
+          <div class="btn" data-btn="B">B</div><div class="btn" data-btn="Y">Y</div>
+          <div class="combo" data-btn="B,A"></div><div class="combo" data-btn="B,Y"></div>
+          <div class="combo" data-btn="X,A"></div><div class="combo" data-btn="X,Y"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <aside>
+    <div class="tabs">
+      <button data-view="both" class="on">Items + Map</button>
+      <button data-view="items-only">Items</button>
+      <button data-view="map-only">Map</button>
+    </div>
+    <div id="frames">
+      <div id="items-wrap"><iframe id="items-frame" title="Item tracker"></iframe></div>
+      <iframe id="map-frame" title="Map tracker"></iframe>
+    </div>
+  </aside>
+</main>
+
+<dialog id="settings">
+  <div class="hd"><h2>Settings</h2><button id="settings-close">Done</button></div>
+  <div class="bd">
+    <h3>Graphics</h3>
+    <label>Filter <select id="opt-filter"></select></label>
+    <label>Aspect ratio
+      <select id="opt-aspect"><option value="8:7">Pixel-perfect (8:7)</option><option value="4:3">TV (4:3)</option></select>
+    </label>
+    <p class="hint">6xBRZ runs on the graphics chip. If an older phone stutters, try 4xBRZ or Sharp pixels.</p>
+
+    <h3>Sound</h3>
+    <label>Volume <input type="range" id="opt-volume" min="0" max="1" step="0.05"></label>
+
+    <h3>Controls</h3>
+    <label>On-screen controls
+      <select id="opt-touch"><option value="auto">Auto (touch screens)</option><option value="on">Always show</option><option value="off">Hide</option></select>
+    </label>
+    <label>Button opacity <input type="range" id="opt-opacity" min="0.15" max="1" step="0.05"></label>
+    <label>Vibrate on press (Android) <input type="checkbox" id="opt-haptics"></label>
+    <p class="hint">Keyboard: arrows move, <kbd>Z</kbd> B, <kbd>X</kbd> A, <kbd>A</kbd> Y, <kbd>S</kbd> X, <kbd>Q</kbd>/<kbd>W</kbd> L/R,
+      <kbd>Enter</kbd> Start, <kbd>Backspace</kbd> Select. <kbd>Tab</kbd> fast-forward, <kbd>P</kbd> pause, <kbd>F5</kbd>/<kbd>F8</kbd> save/load state.
+      Bluetooth and USB controllers work automatically.</p>
+
+    <h3>Save states</h3>
+    <label>Slot <select id="opt-slot"><option>1</option><option>2</option><option>3</option><option>4</option></select></label>
+    <p class="hint">In-game saves are kept automatically for each seed.</p>
+
+    <h3>Tracker</h3>
+    <label>World
+      <select id="gamemode">
+        <option value="open">Open</option><option value="standard">Standard</option>
+        <option value="inverted">Inverted 1.0</option><option value="inverted2">Inverted 2.0</option><option value="retro">Retro</option>
+      </select>
+    </label>
+    <label>Dungeon items
+      <select id="dungeonitems">
+        <option value="standard">Standard</option><option value="mapcompass">Map/Compass</option>
+        <option value="mapcompasskeys">Map/Compass/Small Keys</option><option value="keysanity">Key Sanity</option>
+      </select>
+    </label>
+  </div>
+</dialog>
+
+<script src="js/core.js"></script>
+<script src="js/video.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/input.js"></script>
+<script src="js/storage.js"></script>
+<script src="js/bridge.js"></script>
+<script src="js/tracker.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
