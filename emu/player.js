@@ -1,0 +1,491 @@
+/*
+ * Snes9x player: runs the Snes9x core (emu/snes9x.wasm) inside the page's
+ * game box, with the on-screen controller and an in-game menu overlaid on
+ * the picture, the way EmulatorJS's were.
+ *
+ * The rest of the app was written against EmulatorJS, so once a game is
+ * running this publishes window.EJS_emulator with the parts of that API the
+ * app uses: gameManager.getState/loadState (Resume), pause/play/paused
+ * (leaving and coming back), volume/muted/setVolume and
+ * Module.AL.currentCtx.gain (the app's volume fix and the MSU-1 player).
+ * window.EJS_onGameStart is called the same way EmulatorJS called it.
+ *
+ *   Snes9xPlayer.boot('#game', file)   // a File (or { bytes, name })
+ */
+(function () {
+  'use strict';
+  var BASE = 'emu/';
+  var SETTINGS_KEY = 's9x-player-settings';
+  var DEFAULTS = {
+    filter: 'xbrz6', aspect: '8:7', volume: 0.5, muted: false,
+    touch: 'auto', opacity: 0.45, size: 1, haptics: true, slot: 1,
+    keymap: null, padmap: null,
+  };
+  var LABELS = { UP: 'Up', DOWN: 'Down', LEFT: 'Left', RIGHT: 'Right', A: 'A', B: 'B', X: 'X', Y: 'Y',
+    L: 'L', R: 'R', START: 'Start', SELECT: 'Select' };
+  var ORDER = ['UP', 'DOWN', 'LEFT', 'RIGHT', 'B', 'A', 'Y', 'X', 'L', 'R', 'START', 'SELECT'];
+
+  var cfg = Object.assign({}, DEFAULTS);
+  try { Object.assign(cfg, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
+  function saveCfg() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(cfg)); } catch (e) {} }
+
+  // ── storage: in-game saves (SRAM) and save-state slots, per game ────────
+  var dbp = null;
+  function db() {
+    if (dbp) return dbp;
+    dbp = new Promise(function (res, rej) {
+      var r = indexedDB.open('alttpr-s9x-emu', 1);
+      r.onupgradeneeded = function () { r.result.createObjectStore('kv'); };
+      r.onsuccess = function () { res(r.result); };
+      r.onerror = function () { dbp = null; rej(r.error); };
+    });
+    return dbp;
+  }
+  function kv(mode, fn) {
+    return db().then(function (d) {
+      return new Promise(function (res, rej) {
+        var t = d.transaction('kv', mode), r = fn(t.objectStore('kv')), out;
+        if (r) r.onsuccess = function () { out = r.result; };
+        t.oncomplete = function () { res(out); };
+        t.onerror = t.onabort = function () { rej(t.error); };
+      });
+    });
+  }
+  function kvGet(k) { return kv('readonly', function (s) { return s.get(k); }).catch(function () { return null; }); }
+  function kvPut(k, v) { return kv('readwrite', function (s) { return s.put(v, k); }); }
+
+  // ── styles ──────────────────────────────────────────────────────────────
+  var CSS = [
+    '.s9x { position: absolute; inset: 0; background: #000; overflow: hidden; user-select: none; -webkit-user-select: none; }',
+    '.s9x canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }',
+    '.s9x-msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #8b95a3; font: 14px system-ui, sans-serif; pointer-events: none; }',
+    '.s9x-toast { position: absolute; left: 50%; top: 44px; transform: translate(-50%, -6px); opacity: 0; z-index: 30;',
+    '  background: rgba(22,27,34,.92); color: #e6e9ee; border: 1px solid #2a313c; padding: 5px 11px; border-radius: 8px;',
+    '  font: 13px system-ui, sans-serif; pointer-events: none; transition: opacity .15s, transform .15s; white-space: nowrap; }',
+    '.s9x-toast.show { opacity: 1; transform: translate(-50%, 0); }',
+    /* top pill: pause / fast-forward / menu */
+    '.s9x-pill { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; gap: 4px;',
+    '  background: rgba(13,17,23,.6); border: 1px solid rgba(255,255,255,.12); border-radius: 18px; padding: 3px; transition: opacity .3s; }',
+    '.s9x-pill button { all: unset; cursor: pointer; width: 34px; height: 28px; border-radius: 14px; display: flex; align-items: center;',
+    '  justify-content: center; color: #e6e9ee; font: 600 14px system-ui, sans-serif; }',
+    '.s9x-pill button:hover { background: rgba(255,255,255,.12); }',
+    '.s9x-pill button.on { background: #1f6f3a; }',
+    '.s9x.idle .s9x-pill { opacity: 0; pointer-events: none; }',
+    '.s9x.touch .s9x-pill { opacity: .7; }',
+    /* on-screen controller */
+    '.s9x-touch { display: none; position: absolute; inset: 0; z-index: 10; pointer-events: none; --pad: 140px; touch-action: none; -webkit-touch-callout: none; }',
+    '.s9x.touch .s9x-touch { display: block; }',
+    '.s9x-touch .btn, .s9x-touch .dpad { position: absolute; pointer-events: auto; opacity: var(--op, .45); }',
+    '.s9x-touch .btn { display: flex; align-items: center; justify-content: center; font: 700 14px system-ui, sans-serif; color: #fff;',
+    '  border-radius: 50%; border: 2px solid rgba(255,255,255,.3); text-shadow: 0 1px 2px #000; box-sizing: border-box; }',
+    '.s9x-touch .btn.down { opacity: .95; filter: brightness(1.35); transform: scale(.94); }',
+    '.s9x-touch .dpad { left: max(8px, env(safe-area-inset-left)); bottom: 8px; width: var(--pad); height: var(--pad); border-radius: 50%; background: rgba(255,255,255,.07); }',
+    '.s9x-touch .dpad::before, .s9x-touch .dpad::after { content: ""; position: absolute; background: #3a414c; border-radius: 7px; }',
+    '.s9x-touch .dpad::before { left: 33.3%; top: 5%; width: 33.4%; height: 90%; }',
+    '.s9x-touch .dpad::after { top: 33.3%; left: 5%; height: 33.4%; width: 90%; }',
+    '.s9x-touch .dpad i { position: absolute; z-index: 1; width: 0; height: 0; border: 8px solid transparent; }',
+    '.s9x-touch .dpad .u { left: calc(50% - 8px); top: 10%; border-bottom-color: #aab3bf; }',
+    '.s9x-touch .dpad .d { left: calc(50% - 8px); bottom: 10%; border-top-color: #aab3bf; }',
+    '.s9x-touch .dpad .l { top: calc(50% - 8px); left: 10%; border-right-color: #aab3bf; }',
+    '.s9x-touch .dpad .r { top: calc(50% - 8px); right: 10%; border-left-color: #aab3bf; }',
+    '.s9x-touch .dpad.d-up, .s9x-touch .dpad.d-down, .s9x-touch .dpad.d-left, .s9x-touch .dpad.d-right { opacity: .9; }',
+    '.s9x-touch .dpad.d-up .u { border-bottom-color: #fff; } .s9x-touch .dpad.d-down .d { border-top-color: #fff; }',
+    '.s9x-touch .dpad.d-left .l { border-right-color: #fff; } .s9x-touch .dpad.d-right .r { border-left-color: #fff; }',
+    '.s9x-touch .face { position: absolute; right: max(8px, env(safe-area-inset-right)); bottom: 8px; width: var(--pad); height: var(--pad); pointer-events: none; }',
+    '.s9x-touch .face .btn { width: 36%; height: 36%; font-size: calc(var(--pad) * .11); }',
+    '.s9x-touch .face [data-btn=X] { left: 32%; top: 0; background: #2f5fbf; }',
+    '.s9x-touch .face [data-btn=A] { right: 0; top: 32%; background: #c0392b; }',
+    '.s9x-touch .face [data-btn=B] { left: 32%; bottom: 0; background: #d4a017; }',
+    '.s9x-touch .face [data-btn=Y] { left: 0; top: 32%; background: #2e8b57; }',
+    '.s9x-touch .face .combo { width: 20%; height: 20%; border: 0; background: transparent; opacity: 0; }',
+    '.s9x-touch .face [data-btn="B,A"] { right: 12%; bottom: 12%; } .s9x-touch .face [data-btn="B,Y"] { left: 12%; bottom: 12%; }',
+    '.s9x-touch .face [data-btn="X,A"] { right: 12%; top: 12%; } .s9x-touch .face [data-btn="X,Y"] { left: 12%; top: 12%; }',
+    '.s9x-touch .sh { top: 6px; width: calc(var(--pad) * .5); height: calc(var(--pad) * .23); border-radius: 9px; background: #3a414c; }',
+    '.s9x-touch .sh.l { left: max(8px, env(safe-area-inset-left)); } .s9x-touch .sh.r { right: max(8px, env(safe-area-inset-right)); }',
+    '.s9x-touch .sm { bottom: 6px; width: calc(var(--pad) * .42); height: calc(var(--pad) * .17); border-radius: 99px; background: #3a414c;',
+    '  font-size: calc(var(--pad) * .07); letter-spacing: .05em; }',
+    '.s9x-touch .sm.sel { right: calc(50% + 4px); } .s9x-touch .sm.sta { left: calc(50% + 4px); }',
+    /* menu */
+    '.s9x-menu { position: absolute; inset: 0; z-index: 40; background: rgba(10,13,18,.94); color: #e6e9ee; overflow-y: auto;',
+    '  font: 14px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; user-select: none; }',
+    '.s9x-menu[hidden] { display: none; }',
+    '.s9x-menu .hd { position: sticky; top: 0; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: #161b22; border-bottom: 1px solid #2a313c; }',
+    '.s9x-menu .hd b { flex: 1; font-size: 15px; } .s9x-menu .hd b span { color: #5fbf6f; }',
+    '.s9x-menu .bd { padding: 4px 12px 14px; max-width: 520px; margin: 0 auto; }',
+    '.s9x-menu h4 { margin: 12px 0 4px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #8b95a3; }',
+    '.s9x-menu .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 5px 0; }',
+    '.s9x-menu .acts { display: flex; flex-wrap: wrap; gap: 6px; }',
+    '.s9x-menu button, .s9x-menu select { background: #0d1117; color: #e6e9ee; border: 1px solid #2a313c; border-radius: 6px; padding: 6px 10px; font: inherit; font-size: 13px; cursor: pointer; }',
+    '.s9x-menu button.primary { background: #1f6f3a; border-color: #2a8a4a; }',
+    '.s9x-menu select, .s9x-menu input[type=range] { width: 55%; max-width: 240px; }',
+    '.s9x-menu .hint { color: #8b95a3; font-size: 12px; margin: 4px 0; }',
+    '.s9x-menu table { width: 100%; border-collapse: collapse; font-size: 13px; }',
+    '.s9x-menu td { padding: 3px 0; } .s9x-menu td button { width: 100%; padding: 4px 6px; }',
+    '.s9x-menu td:first-child { width: 22%; color: #8b95a3; } .s9x-menu td + td { padding-left: 6px; }',
+    '.s9x-menu td button.wait { border-color: #e3b341; color: #e3b341; }',
+  ].join('\n');
+
+  var started = false, core = null, video = null, audio = null, input = null;
+  var root, canvas, touchEl, menuEl, pill, toastEl, msgEl;
+  var running = false, paused = false, ff = false, gameName = '', lastSram = null;
+
+  function el(tag, cls, html) { var e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e; }
+
+  function toast(msg) {
+    toastEl.textContent = msg; toastEl.classList.add('show');
+    clearTimeout(toast.t); toast.t = setTimeout(function () { toastEl.classList.remove('show'); }, 1800);
+  }
+
+  // ── building the player ────────────────────────────────────────────────
+  function build(container) {
+    if (!document.getElementById('s9x-css')) { var st = el('style'); st.id = 's9x-css'; st.textContent = CSS; document.head.appendChild(st); }
+    root = el('div', 's9x');
+    canvas = el('canvas');
+    msgEl = el('div', 's9x-msg', 'Starting Snes9x…');
+    toastEl = el('div', 's9x-toast');
+    pill = el('div', 's9x-pill',
+      '<button type="button" data-a="pause" title="Pause">❚❚</button>' +
+      '<button type="button" data-a="ff" title="Fast-forward (hold `)">⏩</button>' +
+      '<button type="button" data-a="menu" title="Menu">⋯</button>');
+    touchEl = el('div', 's9x-touch',
+      '<div class="btn sh l" data-btn="L">L</div><div class="btn sh r" data-btn="R">R</div>' +
+      '<div class="dpad" data-dpad><i class="u"></i><i class="d"></i><i class="l"></i><i class="r"></i></div>' +
+      '<div class="btn sm sel" data-btn="SELECT">SELECT</div><div class="btn sm sta" data-btn="START">START</div>' +
+      '<div class="face"><div class="btn" data-btn="X">X</div><div class="btn" data-btn="A">A</div>' +
+      '<div class="btn" data-btn="B">B</div><div class="btn" data-btn="Y">Y</div>' +
+      '<div class="btn combo" data-btn="B,A"></div><div class="btn combo" data-btn="B,Y"></div>' +
+      '<div class="btn combo" data-btn="X,A"></div><div class="btn combo" data-btn="X,Y"></div></div>');
+    menuEl = el('div', 's9x-menu');
+    menuEl.hidden = true;
+    [canvas, msgEl, touchEl, pill, toastEl, menuEl].forEach(function (c) { root.appendChild(c); });
+    if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
+    container.appendChild(root);
+
+    pill.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      var a = b.dataset.a;
+      if (a === 'pause') setPaused(!paused);
+      else if (a === 'ff') setFF(!ff);
+      else if (a === 'menu') openMenu();
+    });
+    // Desktop: the pill hides itself when the mouse is still.
+    var idleT = null;
+    function wakeUi() { root.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(function () { if (!root.classList.contains('touch')) root.classList.add('idle'); }, 2500); }
+    root.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse') wakeUi(); });
+    root.addEventListener('pointerdown', wakeUi);
+    wakeUi();
+    // keep the mouse free (no pointer lock, no context menu on the picture)
+    canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    new ResizeObserver(layoutTouch).observe(root);
+  }
+
+  // Controller size follows the game box (bigger box, bigger buttons).
+  function layoutTouch() {
+    var w = root.clientWidth, h = root.clientHeight;
+    if (!w || !h) return;
+    var pad = Math.max(84, Math.min(w * 0.31, h * 0.42, 180)) * (cfg.size || 1);
+    touchEl.style.setProperty('--pad', Math.round(pad) + 'px');
+    touchEl.style.setProperty('--op', cfg.opacity);
+    if (video) video.dirty = true;
+  }
+
+  var coarse = window.matchMedia ? window.matchMedia('(pointer: coarse)') : { matches: false };
+  var padUsed = false;    // a physical controller is in use: hide the on-screen one (auto mode)
+  function applyTouch() {
+    var touchy = coarse.matches || (navigator.maxTouchPoints > 0 && !window.matchMedia('(hover: hover)').matches);
+    var show = cfg.touch === 'on' || (cfg.touch === 'auto' && touchy && !padUsed);
+    root.classList.toggle('touch', !!show);
+    input.haptics = !!cfg.haptics;
+    layoutTouch();
+  }
+
+  // ── menu ────────────────────────────────────────────────────────────────
+  function keyName(code) {
+    if (!code) return '—';
+    return code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Arrow/, '').replace(/Left$|Right$/, function (s) { return /^(Shift|Control|Alt|Meta)/.test(code) ? ' ' + s : s; });
+  }
+  function keyFor(btn) { return Object.keys(input.keymap).filter(function (k) { return input.keymap[k] === btn; }); }
+  function padFor(btn) { return Object.keys(input.padmap).filter(function (k) { return input.padmap[k] === btn; }); }
+
+  function openMenu() {
+    var wasPaused = paused;
+    if (!paused) setPaused(true);
+    menuEl._resume = !wasPaused;
+    renderMenu();
+    menuEl.hidden = false;
+  }
+  function closeMenu() {
+    input.capture = null;
+    menuEl.hidden = true;
+    if (menuEl._resume) setPaused(false);
+  }
+  function renderMenu() {
+    var P = window.Video ? Video.PRESETS : {};
+    var opts = function (list, cur) { return list.map(function (o) { return '<option value="' + o[0] + '"' + (String(o[0]) === String(cur) ? ' selected' : '') + '>' + o[1] + '</option>'; }).join(''); };
+    var rows = ORDER.map(function (b) {
+      return '<tr><td>' + LABELS[b] + '</td><td><button type="button" data-map="key" data-b="' + b + '">' +
+        (keyFor(b).map(keyName).join(' / ') || '—') + '</button></td><td><button type="button" data-map="pad" data-b="' + b + '">' +
+        (padFor(b).map(function (i) { return 'Button ' + i; }).join(' / ') || '—') + '</button></td></tr>';
+    }).join('');
+    menuEl.innerHTML =
+      '<div class="hd"><b>Snes<span>9x</span></b><button type="button" class="primary" data-a="close">Back to game</button></div>' +
+      '<div class="bd">' +
+      '<h4>Game</h4><div class="acts">' +
+        '<button type="button" data-a="save">Save state</button><button type="button" data-a="load">Load state</button>' +
+        '<select data-s="slot" style="width:auto">' + opts([[1, 'Slot 1'], [2, 'Slot 2'], [3, 'Slot 3'], [4, 'Slot 4']], cfg.slot) + '</select>' +
+        '<button type="button" data-a="restart">Restart</button>' +
+        (root.requestFullscreen ? '<button type="button" data-a="fs">Full screen</button>' : '') +
+      '</div><p class="hint">In-game saves are kept automatically for each seed. Keys: F5 save state, F8 load state, hold ` to fast-forward.</p>' +
+      '<h4>Sound</h4><div class="row"><span>Volume</span><input type="range" min="0" max="1" step="0.05" data-s="volume" value="' + cfg.volume + '"></div>' +
+      '<div class="row"><span>Mute</span><input type="checkbox" data-s="muted"' + (cfg.muted ? ' checked' : '') + '></div>' +
+      '<h4>Graphics</h4>' +
+      '<div class="row"><span>Filter</span><select data-s="filter">' + opts(Object.keys(P).map(function (k) { return [k, P[k].name]; }), cfg.filter) + '</select></div>' +
+      '<div class="row"><span>Aspect ratio</span><select data-s="aspect">' + opts([['8:7', 'Pixel-perfect (8:7)'], ['4:3', 'TV (4:3)'], ['fill', 'Fill the box']], cfg.aspect) + '</select></div>' +
+      '<p class="hint">6xBRZ runs on the graphics chip. If an older phone stutters, try 4xBRZ or Sharp pixels.</p>' +
+      '<h4>On-screen controller</h4>' +
+      '<div class="row"><span>Show</span><select data-s="touch">' + opts([['auto', 'Auto (touch screens)'], ['on', 'Always'], ['off', 'Never']], cfg.touch) + '</select></div>' +
+      '<div class="row"><span>Opacity</span><input type="range" min="0.1" max="1" step="0.05" data-s="opacity" value="' + cfg.opacity + '"></div>' +
+      '<div class="row"><span>Size</span><input type="range" min="0.7" max="1.4" step="0.05" data-s="size" value="' + cfg.size + '"></div>' +
+      '<div class="row"><span>Vibrate on press (Android)</span><input type="checkbox" data-s="haptics"' + (cfg.haptics ? ' checked' : '') + '></div>' +
+      '<h4>Controls</h4><p class="hint">Tap a box, then press the key or controller button for it (Esc cancels).</p>' +
+      '<table><tr><td></td><td class="hint">Keyboard</td><td class="hint">Controller</td></tr>' + rows + '</table>' +
+      '<div class="acts" style="margin-top:8px"><button type="button" data-a="resetmap">Reset controls</button></div>' +
+      (input.padName ? '<p class="hint">Controller: ' + input.padName.replace(/</g, '&lt;') + '</p>' : '') +
+      '</div>';
+  }
+  function bindMenu() {
+    menuEl.addEventListener('click', function (e) {
+      var b = e.target.closest('button'); if (!b) return;
+      var a = b.dataset.a;
+      if (a === 'close') closeMenu();
+      else if (a === 'save') { saveState(); }
+      else if (a === 'load') { loadState(function (ok) { if (ok) closeMenu(); }); menuEl._resume = true; }
+      else if (a === 'restart') { if (confirm('Restart the game?')) { core.reset(); audio.clear(); menuEl._resume = true; closeMenu(); } }
+      else if (a === 'fs') { closeMenu(); fullscreen(); }
+      else if (a === 'resetmap') { input.keymap = Object.assign({}, EmuInput.DEFAULT_KEYS); input.padmap = Object.assign({}, EmuInput.DEFAULT_PAD); cfg.keymap = cfg.padmap = null; saveCfg(); renderMenu(); }
+      else if (b.dataset.map) remap(b);
+    });
+    menuEl.addEventListener('input', function (e) {
+      var s = e.target.dataset.s; if (!s) return;
+      var v = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+      if (s === 'volume' || s === 'opacity' || s === 'size' || s === 'slot') v = +v;
+      cfg[s] = v; saveCfg();
+      if (s === 'volume' || s === 'muted') { ejs.volume = cfg.volume; ejs.muted = cfg.muted; ejs.setVolume(cfg.volume); }
+      else if (s === 'filter') applyFilter();
+      else if (s === 'aspect') applyAspect();
+      else applyTouch();
+    });
+  }
+  function remap(btn) {
+    var kind = btn.dataset.map, target = btn.dataset.b;
+    menuEl.querySelectorAll('button.wait').forEach(function (x) { x.classList.remove('wait'); });
+    btn.classList.add('wait'); btn.textContent = kind === 'key' ? 'Press a key…' : 'Press a button…';
+    if (kind === 'pad') padPoll();
+    input.capture = function (r) {
+      input.capture = null;
+      if (!r.cancel) {
+        if (kind === 'key' && r.key) {
+          Object.keys(input.keymap).forEach(function (k) { if (input.keymap[k] === target) delete input.keymap[k]; });
+          input.keymap[r.key] = target; cfg.keymap = input.keymap;
+        } else if (kind === 'pad' && r.pad != null) {
+          Object.keys(input.padmap).forEach(function (k) { if (input.padmap[k] === target) delete input.padmap[k]; });
+          input.padmap[r.pad] = target; cfg.padmap = input.padmap;
+        }
+        saveCfg();
+      }
+      renderMenu();
+    };
+  }
+  // While paused the frame loop doesn't read controllers; poll for a remap.
+  function padPoll() { if (!input.capture) return; input.gamepadMask(); requestAnimationFrame(padPoll); }
+
+  function fullscreen() {
+    if (document.fullscreenElement) { document.exitFullscreen(); return; }
+    var p = root.requestFullscreen ? root.requestFullscreen({ navigationUI: 'hide' }) : null;
+    if (p && p.catch) p.catch(function () {});
+  }
+
+  // ── graphics ────────────────────────────────────────────────────────────
+  function applyAspect() {
+    if (!video) return;
+    video.aspect = cfg.aspect === '4:3' ? 4 / 3 : cfg.aspect === 'fill' ? 0 : 8 / 7;
+    video.dirty = true;
+  }
+  function applyFilter() {
+    if (!video) return;
+    video.setPreset(cfg.filter).catch(function (e) {
+      console.warn('[snes9x] filter', e);
+      toast('That filter isn’t supported here; using sharp pixels.');
+      cfg.filter = 'nearest'; saveCfg(); video.setPreset('nearest');
+    });
+  }
+
+  // ── saves ───────────────────────────────────────────────────────────────
+  function sramKey() { return 'sram:' + gameName; }
+  function flushSram() {
+    if (!running || !core) return Promise.resolve();
+    var s = core.sram();
+    if (!s.length || !lastSram) return Promise.resolve();
+    var changed = false;
+    for (var i = 0; i < s.length; i++) if (s[i] !== lastSram[i]) { changed = true; break; }
+    if (!changed) return Promise.resolve();
+    lastSram = s.slice();
+    return kvPut(sramKey(), lastSram).catch(function (e) { console.warn('[snes9x] sram', e); });
+  }
+  function saveState() {
+    if (!running) return;
+    var st = core.saveState();
+    if (!st) { toast('Couldn’t save state'); return; }
+    kvPut('state:' + gameName + ':' + cfg.slot, { at: Date.now(), data: st })
+      .then(function () { toast('Saved to slot ' + cfg.slot); }, function () { toast('Couldn’t save state'); });
+  }
+  function loadState(done) {
+    if (!running) return;
+    kvGet('state:' + gameName + ':' + cfg.slot).then(function (r) {
+      if (!r) { toast('Slot ' + cfg.slot + ' is empty'); if (done) done(false); return; }
+      var ok = core.loadState(r.data);
+      if (ok) { audio.clear(); toast('Loaded slot ' + cfg.slot); } else toast('That state didn’t load');
+      if (done) done(ok);
+    });
+  }
+
+  // ── pause / fast-forward ────────────────────────────────────────────────
+  function setPaused(p) {
+    if (!running) return;
+    paused = !!p;
+    var b = pill.querySelector('[data-a=pause]');
+    b.textContent = paused ? '▶' : '❚❚'; b.classList.toggle('on', paused); b.title = paused ? 'Resume' : 'Pause';
+    if (paused) { flushSram(); audio.clear(); }
+    wake(!paused);
+  }
+  function setFF(on) { ff = !!on; pill.querySelector('[data-a=ff]').classList.toggle('on', ff); if (!ff) audio.clear(); }
+
+  // keep the screen on while playing
+  var lock = null;
+  function wake(on) {
+    if (!('wakeLock' in navigator)) return;
+    if (on && !lock && !document.hidden) navigator.wakeLock.request('screen').then(function (l) { lock = l; l.addEventListener('release', function () { lock = null; }); }).catch(function () {});
+    else if (!on && lock) { lock.release().catch(function () {}); lock = null; }
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) flushSram(); else if (running && !paused) wake(true);
+  });
+  window.addEventListener('pagehide', function () { flushSram(); });
+
+  // ── frame loop ──────────────────────────────────────────────────────────
+  // If the display refresh is within 1% of the SNES rate (~60.1 Hz), run
+  // exactly one frame per refresh for perfectly smooth scrolling; the audio
+  // absorbs the tiny speed difference. Otherwise (120 Hz screens, throttled
+  // windows) pace frames with a time accumulator.
+  var acc = 0, last = 0, ema = 0;
+  function tick(now) {
+    requestAnimationFrame(tick);
+    video.fit();
+    var dt = last ? Math.min(now - last, 100) : 16.7; last = now;
+    ema = ema ? ema * 0.95 + dt * 0.05 : dt;
+    if (!running || paused) { video.draw(); return; }
+    var frameMs = 1000 / core.fps, pad = input.read(), n = 0;
+    var vsync = !ff && Math.abs(ema - frameMs) / frameMs < 0.01;
+    if (vsync) { n = 1; acc = 0; }
+    else {
+      acc += dt * (ff ? 4 : 1);
+      n = Math.floor(acc / frameMs); acc -= n * frameMs;
+      var max = ff ? 8 : 3;
+      if (n > max) { n = max; acc = 0; }
+    }
+    for (var i = 0; i < n; i++) {
+      core.runFrame(pad, 0);
+      var a = core.audio();
+      if (!ff) audio.push(a);
+    }
+    if (n) video.upload(core.frame());
+    video.draw();
+  }
+  // A hidden page gets no animation frames, but the app expects the game to
+  // keep running when a desktop window is merely covered by tracker windows;
+  // browsers still give hidden pages ~1 timer a second, so nothing to do there.
+
+  // ── the EmulatorJS-shaped object the rest of the app uses ───────────────
+  var ejs = {
+    gameManager: {
+      getState: function () { return core.saveState(); },
+      loadState: function (bytes) { if (!core.loadState(bytes)) throw new Error('state did not load'); audio.clear(); },
+      restart: function () { core.reset(); audio.clear(); },
+    },
+    get paused() { return paused; },
+    pause: function () { setPaused(true); },
+    play: function () { setPaused(false); },
+    volume: cfg.volume,
+    muted: cfg.muted,
+    setVolume: function (v) { this.volume = v; cfg.volume = v; cfg.muted = this.muted; saveCfg(); audio.setMuted(this.muted); audio.setVolume(v); },
+    Module: {
+      AL: {
+        get currentCtx() { return audio && audio.ctx ? { gain: audio.gain, sources: [], audioCtx: audio.ctx } : null; },
+      },
+    },
+    enableMouseLock: false,
+    snes9x: true,
+    get core() { return core; },
+    saveState: saveState, loadState: loadState, openMenu: openMenu,
+  };
+
+  // ── boot ────────────────────────────────────────────────────────────────
+  function boot(container, file) {
+    if (started) return Promise.reject(new Error('already started'));
+    started = true;
+    if (typeof container === 'string') container = document.querySelector(container);
+    build(container);
+    var name = file.name || 'game.sfc';
+    gameName = name.replace(/\.[^.]+$/, '');
+    var bytesP = file.bytes ? Promise.resolve(new Uint8Array(file.bytes)) : file.arrayBuffer().then(function (b) { return new Uint8Array(b); });
+
+    try { video = new Video(canvas); } catch (e) {
+      msgEl.textContent = 'This browser has no WebGL2, which the emulator needs. Try an up-to-date Safari, Chrome or Firefox.';
+      return Promise.reject(e);
+    }
+    audio = new EmuAudio();
+    input = new EmuInput();
+    if (cfg.keymap) input.keymap = Object.assign({}, cfg.keymap);
+    if (cfg.padmap) input.padmap = Object.assign({}, cfg.padmap);
+    input.bindTouch(touchEl);
+    input.enabled = function () { return menuEl.hidden; };
+    input.onActivity = function () { audio.unlock(); };
+    input.onPadPress = function () { if (!padUsed) { padUsed = true; applyTouch(); } };
+    input.hotkeys = {
+      F5: function (d) { if (d) saveState(); },
+      F8: function (d) { if (d) loadState(); },
+      Backquote: function (d) { setFF(d); },
+    };
+    // Touching the screen again brings the on-screen controller back.
+    root.addEventListener('pointerdown', function (e) { if (e.pointerType === 'touch' && padUsed) { padUsed = false; applyTouch(); } }, true);
+    ['pointerdown', 'keydown', 'touchend'].forEach(function (t) { document.addEventListener(t, function () { audio.unlock(); }, true); });
+    if (coarse.addEventListener) coarse.addEventListener('change', applyTouch);
+    bindMenu();
+    applyTouch(); applyAspect(); applyFilter();
+    audio.volume = cfg.volume; audio.muted = cfg.muted;
+    requestAnimationFrame(tick);
+
+    return Promise.all([Snes9xCore.create(BASE + 'snes9x.wasm'), bytesP]).then(function (r) {
+      core = r[0];
+      if (!core.load(r[1])) throw new Error('Snes9x could not load "' + name + '".');
+      audio.setRate(core.sampleRate);
+      return kvGet(sramKey());
+    }).then(function (saved) {
+      var s = core.sram();
+      if (saved && saved.length === s.length) s.set(saved);
+      lastSram = core.sram().slice();
+      setInterval(flushSram, 3000);
+      msgEl.remove();
+      running = true;
+      window.EJS_emulator = ejs;
+      setPaused(false);
+      if (typeof window.EJS_onGameStart === 'function') { try { window.EJS_onGameStart(); } catch (e) { console.error(e); } }
+      return ejs;
+    }).catch(function (e) {
+      msgEl.textContent = 'The emulator failed to start: ' + (e && e.message || e);
+      throw e;
+    });
+  }
+
+  window.Snes9xPlayer = { boot: boot, get emulator() { return running ? ejs : null; } };
+})();

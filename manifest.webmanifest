@@ -1,7 +1,7 @@
 {
   "name": "ALTTPR Snes9x",
   "short_name": "ALTTPR S9X",
-  "description": "A Link to the Past Randomizer on a built-in Snes9x, with the Hutch item and map tracker.",
+  "description": "A Link to the Past Randomizer on a built-in Snes9x, with the Hutch tracker and seed generators.",
   "id": "./",
   "start_url": "./",
   "scope": "./",

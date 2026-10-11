@@ -1,5 +1,5 @@
 /*
- * sni-shim.js — loaded first inside each Hutch tracker page (Snes9x edition).
+ * sni-shim.js — loaded first inside each Hutch tracker page.
  *
  * Hutch talks to SNI over ws://host:23074 using the usb2snes JSON protocol.
  * When this page is hosted by the unified app, we swap window.WebSocket for a
@@ -24,6 +24,64 @@
     return null;
   }
   if (!findBridge()) return; // standalone use: leave the real WebSocket alone
+
+  // Desktop edition (portal.js): parts of this page can be shown in another
+  // window. Clicks there reach the parts' own listeners, but not the ones this
+  // page put on `document` or `window` (closing a menu on an outside click, the
+  // dungeon hover card, hotkeys). So keep a list of those, for portal.js to
+  // add to the other windows too. Runs before the tracker's own scripts.
+  (function () {
+    var list = window.__unifiedListeners = [];
+    function wrap(target, kind) {
+      var add = target.addEventListener, remove = target.removeEventListener;
+      target.addEventListener = function (type, fn, opts) {
+        list.push({ kind: kind, type: type, fn: fn, opts: opts });
+        try { if (window.__unifiedOnListener) window.__unifiedOnListener(kind, type, fn, opts, true); } catch (e) {}
+        return add.call(this, type, fn, opts);
+      };
+      target.removeEventListener = function (type, fn, opts) {
+        for (var i = list.length - 1; i >= 0; i--) {
+          if (list[i].kind === kind && list[i].type === type && list[i].fn === fn) { list.splice(i, 1); break; }
+        }
+        try { if (window.__unifiedOnListener) window.__unifiedOnListener(kind, type, fn, opts, false); } catch (e) {}
+        return remove.call(this, type, fn, opts);
+      };
+    }
+    wrap(document, 'doc');
+    wrap(window, 'win');
+  })();
+
+  // The item tracker sets every bottle again on each memory read (about once
+  // a second), even when nothing changed, and repaints the boss circles and
+  // item fills each time. That shows as a flicker (constant with a missing
+  // image). Skip an update that would change nothing: same state, and the
+  // slot already shows its picture. Real changes go straight through.
+  window.addEventListener('load', function () {
+    var orig = window.updateItemState;
+    if (typeof orig !== 'function' || orig.__unifiedSkip) return;
+    var items = null;
+    try { items = (0, eval)('typeof items !== "undefined" ? items : null'); } catch (e) {}
+    if (!items) return;
+    var wrapped = function (itemKey, state) {
+      try {
+        var it = items[itemKey];
+        if (it && !it.isGoMode && it.states && typeof state === 'number') {
+          var s = Math.min(state, it.states.length - 1);
+          if (s === it.currentState) {
+            var want = it.states[s].img;
+            var ov = typeof window.seedFlagOverlay === 'function' ? window.seedFlagOverlay(itemKey, s) : null;
+            if (ov && ov.img) want = ov.img;
+            var slot = document.querySelector('[data-item-key="' + itemKey + '"]');
+            var img = slot && slot.querySelector('img');
+            if (img && img.getAttribute('src') === want) return;
+          }
+        }
+      } catch (e) {}
+      return orig.apply(this, arguments);
+    };
+    wrapped.__unifiedSkip = true;
+    window.updateItemState = wrapped;
+  });
 
   function isSniUrl(url) { return /^wss?:\/\/[^/]+:(23074|8080|23070)\b/.test(String(url)); }
 
