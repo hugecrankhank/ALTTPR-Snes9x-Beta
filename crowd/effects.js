@@ -12,6 +12,11 @@
  *   CrowdEffects.trigger('heal_full', 'someone')   // test from the console
  *   CrowdEffects.list()                            // ids and names
  *
+ * Three effects use the app's own buttons instead of RAM: a random sprite,
+ * a random favourite MSU-1 pack, and a whole new seed (off unless "Allow
+ * seed reroll" is checked in the menu; it counts down 10 s first and can be
+ * cancelled there).
+ *
  * Settings (bridge address, on/off) are in the emulator menu under
  * "Crowd effects". The bridge address defaults to ws://localhost:21213.
  */
@@ -19,7 +24,7 @@
   'use strict';
 
   var SETTINGS_KEY = 's9x-crowd-settings';
-  var cfg = { enabled: false, url: 'ws://localhost:21213', feed: true };
+  var cfg = { enabled: false, url: 'ws://localhost:21213', feed: true, allowReroll: false };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
   function saveCfg() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(cfg)); } catch (e) {} }
 
@@ -96,7 +101,79 @@
       frame: function (r) { if (r[A.HP] > 8) r[A.HP] = 8; r[A.HP_FILL] = 0; } },
     no_magic:    { name: 'Magic locked', good: false, secs: 30,
       frame: function (r) { r[A.MAGIC] = 0; r[A.MAGIC_FILL] = 0; } },
+
+    // These press the app's own roll buttons (randomizer/app.js, reroll.js).
+    sprite_roll: { name: 'Random sprite', good: true,
+      app: function () { return press(['r-sprite-random', 'sprite-btn'], 'the sprite buttons'); } },
+    sprite_fav:  { name: 'Random favourite sprite', good: true,
+      app: function () { return press(['r-sprite-fav-roll', 'sprite-fav-btn'], 'the sprite buttons'); } },
+    msu_roll:    { name: 'Random MSU pack', good: true,
+      app: function () { return press(['music-roll-btn'], 'MSU packs (add some and star favourites in ♪)'); } },
+    seed_roll:   { name: 'New seed!', good: false,
+      app: function () { return startReroll(); } },
   };
+
+  // ── app actions ────────────────────────────────────────────────────────
+  // The roll functions show an alert() when they can't do it (no favourites
+  // yet...). A dialog would freeze the stream, so while one of ours is
+  // running, alerts go to the feed instead.
+  var quietUntil = 0, realAlert = null;
+  function quietAlerts() {
+    if (typeof window === 'undefined' || !window.alert) return;
+    quietUntil = Date.now() + 20000;
+    if (realAlert) return;
+    realAlert = window.alert;
+    window.alert = function (msg) {
+      if (Date.now() < quietUntil) { feed(String(msg), 'info'); return; }
+      return realAlert.call(window, msg);
+    };
+  }
+  function press(ids, what) {
+    if (typeof document === 'undefined') return false;
+    for (var i = 0; i < ids.length; i++) {
+      var b = document.getElementById(ids[i]);
+      if (!b) continue;
+      if (b.disabled) { feed('Busy, try again in a moment', 'info'); return false; }
+      quietAlerts();
+      b.click();
+      return true;
+    }
+    feed('Not available: ' + what, 'info');
+    return false;
+  }
+
+  // A new seed closes this game, so: only if allowed, and with a countdown.
+  var rerollT = null, rerollLeft = 0;
+  function startReroll() {
+    if (!cfg.allowReroll) { feed('Seed reroll is turned off in Crowd effects', 'info'); return false; }
+    if (rerollT) { feed('A new seed is already coming', 'info'); return false; }
+    if (typeof document === 'undefined' || !document.getElementById('r-generate')) { feed('Not available: the randomizer', 'info'); return false; }
+    rerollLeft = 10;
+    feed('NEW SEED in 10s!', 'bad');
+    rerollT = setInterval(function () {
+      rerollLeft--;
+      if (rerollLeft > 0) { if (rerollLeft <= 3 || rerollLeft === 5) feed('New seed in ' + rerollLeft + '…', 'bad'); render(); return; }
+      clearInterval(rerollT); rerollT = null; render();
+      // reroll.js without its "are you sure?" box: empty the Seed box, Generate & Play
+      var gen = document.getElementById('r-generate'), seed = document.getElementById('r-seed');
+      if (!gen || gen.disabled) { feed('A seed is already being made', 'info'); return; }
+      quietAlerts();
+      if (seed) {
+        seed.value = '';
+        seed.dispatchEvent(new Event('input', { bubbles: true }));
+        seed.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      feed('Rolling a new seed…', 'bad');
+      gen.click();
+    }, 1000);
+    render();
+    return true;
+  }
+  function cancelReroll() {
+    if (!rerollT) return;
+    clearInterval(rerollT); rerollT = null;
+    feed('New seed cancelled', 'info');
+  }
 
   // ── queue and timers ────────────────────────────────────────────────────
   var queue = [];              // { id, user, label }
@@ -128,6 +205,7 @@
     if (!job) return;
     var f = EFFECTS[job.id];
     if (f.secs) active[job.id] = (active[job.id] || 0) + Math.round(f.secs * (core.fps || 60.1));
+    else if (f.app) { try { f.app(); } catch (e) { console.warn('[crowd]', job.id, e); } }
     else f.apply(ram);
     gap = GAP_FRAMES;
     feed((job.user ? job.user + ': ' : '') + (job.label ? job.label + ' → ' : '') + f.name + (f.secs ? ' (' + f.secs + 's)' : ''),
@@ -216,6 +294,8 @@
       '<div class="row"><span>TikTok effects on</span><input type="checkbox" data-ext="cc-enabled"' + (cfg.enabled ? ' checked' : '') + '></div>' +
       '<div class="row"><span>Bridge address</span><input type="text" data-ext="cc-url" value="' + esc(cfg.url) + '" style="width:55%;max-width:240px"></div>' +
       '<div class="row"><span>Show feed on game</span><input type="checkbox" data-ext="cc-feed"' + (cfg.feed ? ' checked' : '') + '></div>' +
+      '<div class="row"><span>Allow seed reroll (ends this game)</span><input type="checkbox" data-ext="cc-reroll"' + (cfg.allowReroll ? ' checked' : '') + '></div>' +
+      (rerollT ? '<div class="acts"><button type="button" class="primary" data-ext="cc-cancel-reroll">Cancel new seed (' + rerollLeft + 's)</button></div>' : '') +
       '<p class="hint">Status: ' + esc(status) + (bridgeInfo ? ' · ' + esc(bridgeInfo) : '') +
         ' · ' + queue.length + ' queued' + (timed.length ? ' · active: ' + esc(timed.join(', ')) : '') + '</p>' +
       '<p class="hint">Test an effect (it runs when you return to the game):</p>' +
@@ -226,13 +306,15 @@
     rerender = rr;
     var a = b.dataset.ext;
     if (a === 'cc-test') trigger(b.dataset.id, 'test');
-    else if (a === 'cc-clear') { queue.length = 0; active = {}; }
+    else if (a === 'cc-clear') { queue.length = 0; active = {}; cancelReroll(); }
+    else if (a === 'cc-cancel-reroll') cancelReroll();
     rr();
   }
   function menuInput(el) {
     var a = el.dataset.ext;
     if (a === 'cc-enabled') { cfg.enabled = el.checked; saveCfg(); connect(); }
     else if (a === 'cc-feed') { cfg.feed = el.checked; saveCfg(); }
+    else if (a === 'cc-reroll') { cfg.allowReroll = el.checked; saveCfg(); if (!el.checked) cancelReroll(); rerender && rerender(); }
     else if (a === 'cc-url') {
       cfg.url = el.value.trim(); saveCfg();
       clearTimeout(menuInput.t); menuInput.t = setTimeout(connect, 800);
@@ -266,7 +348,7 @@
   }
 
   var api = {
-    trigger: trigger, list: list, EFFECTS: EFFECTS, ADDR: A, inPlay: inPlay,
+    trigger: trigger, list: list, cancelReroll: cancelReroll, EFFECTS: EFFECTS, ADDR: A, inPlay: inPlay,
     _onFrame: onFrame, _onInput: onInput,
     get queue() { return queue.slice(); }, get active() { return Object.assign({}, active); },
     get status() { return status; },

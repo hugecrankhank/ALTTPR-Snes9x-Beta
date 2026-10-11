@@ -15,7 +15,10 @@
     "Confetti": "swap_by",
     "Perfume": "hurt_2",
     "Galaxy": "one_hit",
-    "Corgi": "heal_full"
+    "Corgi": "heal_full",
+    "Sunglasses": "sprite_roll",
+    "Mishka Bear": "msu_roll",
+    "Lion": "seed_roll"
   },
 
   "likes": { "every": 300, "effect": "heal_1" },

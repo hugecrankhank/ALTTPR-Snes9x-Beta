@@ -48,6 +48,20 @@ reloads by itself when you save it.
 | `bombs_plus` / `bombs_none` | +10 / lose all bombs | | | |
 | `arrows_plus` / `arrows_none` | +10 / lose all arrows | | | |
 
+**App rolls** (use the app's own buttons):
+
+| id | effect |
+|---|---|
+| `sprite_roll` | Random sprite from the whole library (changes Link right away) |
+| `sprite_fav` | Random sprite from your ★ favourites |
+| `msu_roll` | Random MSU-1 pack from your ★ favourite packs |
+| `seed_roll` | **New seed** with the current Randomizer settings — ends the current game |
+
+`seed_roll` is off until you check **Allow seed reroll** in ⋯ menu → Crowd
+effects. When it fires, the feed counts down 10 seconds, and a **Cancel new
+seed** button appears in that menu. If a roll can't happen (no favourites
+yet, no packs), the feed says so instead of popping up a dialog.
+
 Timed effects count only time spent in play and stack (a second gift adds
 time). They only filter buttons or hold a value each frame, so save states,
 resets and reloads can't leave the game stuck changed.
