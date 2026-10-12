@@ -1089,9 +1089,24 @@ function spriteLabel(info, fileName) {
 }
 
 // ── MSU-1 packs ──────────────────────────────────────────────────────────────
-function packName(files) {
+// A first guess at the pack's name: its .zip or folder name when there is one
+// (most packs name their songs alttp_msu-1.pcm…, so that alone says little),
+// otherwise the songs' shared name. The player can change it when it's added.
+function packName(files, zip) {
+  if (zip) return zip.name.replace(/\.zip$/i, '');
+  const path = files[0] && (files[0].webkitRelativePath || '');
+  const dirs = path.split('/').slice(0, -1).filter(Boolean);
+  if (dirs.length) return dirs[dirs.length - 1];
   const n = files.map((f) => f.name.replace(/-\d+\.pcm$/i, ''));
   return n.every((x) => x === n[0]) ? n[0] : 'MSU-1 pack';
+}
+
+// Ask for a name (the guess filled in). Cancel or empty keeps the guess.
+function askPackName(guess, title = 'Name this MSU-1 pack') {
+  let v = null;
+  try { v = window.prompt(title, guess); } catch (e) {}
+  v = (v || '').trim().slice(0, 60);
+  return v || guess;
 }
 
 function showMsu(name) {
@@ -1133,7 +1148,7 @@ async function loadMsuZip(zip) {
   const files = packFolderFiles(pcm);
   if (!files.length) throw new Error('No MSU-1 .pcm files in that .zip (they should be named like pack-1.pcm, pack-2.pcm, …).');
   const list = files.map((f) => [trackNumber(f.name), f.ent]);
-  return addPack({ name: packName(files), zip, entries: list }, list.length, zip.size);
+  return addPack({ name: packName(files, zip), zip, entries: list }, list.length, zip.size);
 }
 
 async function loadMsuPack(fileList) {
@@ -1185,15 +1200,20 @@ function playPackData(p) {
 
 async function addPack(data, count, size) {
   msu.unlock();
-  playPackData(data);
-  // the same pack again: use the copy already kept
-  const same = packs.find((x) => x.name === data.name && x.count === count && x.size === size);
+  // the same pack again: use the copy already kept (matched by what it was
+  // added as, not the name the player gave it)
+  const src = data.name;
+  const same = packs.find((x) => (x.src || x.name) === src && x.count === count && x.size === size);
   if (same) {
+    playPackData({ ...data, name: same.name });
     visitPack = null;
     await setCurrent(same.id);
-    status(`MSU-1 pack: ${data.name} (already in My packs). ${musicNote(await liveMusic(true).catch(() => null))}`, 'ok');
+    status(`MSU-1 pack: ${same.name} (already in My packs). ${musicNote(await liveMusic(true).catch(() => null))}`, 'ok');
+    renderMusicMenu();
     return;
   }
+  data = { ...data, name: askPackName(src) };
+  playPackData(data);
   status(`Saving ${data.name} in this browser…`);
   const id = 'p' + Date.now().toString(36);
   const keep = data.zip ? data : { name: data.name, tracks: data.tracks.map(([n, f]) => [n, new Blob([f], { type: 'application/octet-stream' })]) };
@@ -1201,7 +1221,7 @@ async function addPack(data, count, size) {
   try {
     try { if (navigator.storage && navigator.storage.persist) await navigator.storage.persist(); } catch (e) {}
     await kvSet('msu-pack:' + id, keep);
-    packs.push({ id, name: data.name, count, size, fav: false });
+    packs.push({ id, name: data.name, src, count, size, fav: false });
     await kvSet('msu-packs', packs);
     saved = true;
   } catch (e) {
@@ -1235,7 +1255,7 @@ async function usePack(id) {
   msu.unlock();
   const data = await kvGet('msu-pack:' + id).catch(() => null);
   if (!data) throw new Error(`${meta.name} isn't in this browser any more. Remove it and add it again.`);
-  playPackData(data);
+  playPackData({ ...data, name: meta.name });
   visitPack = null;
   await setCurrent(id);
   status(`MSU-1 pack: ${meta.name}. ${musicNote(await liveMusic(true).catch(() => null))}`, 'ok');
@@ -1462,9 +1482,10 @@ function buildMusicButton() {
     '#music-menu .mm-pick small, #music-menu .mm-act small { color: var(--dim, #8b95a3); font-size: 11px; }',
     '#music-menu .mm-cur b { color: var(--accent, #5fbf6f); }',
     '#music-menu .mm-cur b::before { content: "\\266A  "; }',
-    '#music-menu .mm-star, #music-menu .mm-del { flex: none; width: 40px; padding: 0; text-align: center; font-size: 17px; color: var(--dim, #8b95a3); }',
+    '#music-menu .mm-star, #music-menu .mm-del, #music-menu .mm-ren { flex: none; width: 40px; padding: 0; text-align: center; font-size: 17px; color: var(--dim, #8b95a3); }',
     '#music-menu .mm-star.on { color: #f5c542; }',
-    '#music-menu .mm-del { font-size: 14px; }',
+    '#music-menu .mm-del, #music-menu .mm-ren { font-size: 14px; }',
+    '#music-menu .mm-ren { width: 34px; }',
     '#music-menu .mm-empty { padding: 6px 10px; color: var(--dim, #8b95a3); font-size: 13px; }',
   ].join('\n');
   document.head.appendChild(st);
@@ -1502,6 +1523,20 @@ function placeMusicMenu() {
 
 function esc(t) { return String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
+// ✎ in My packs: a new name for a kept pack
+async function renamePack(id) {
+  const meta = packs.find((x) => x.id === id);
+  if (!meta) return;
+  const name = askPackName(meta.name, 'Rename this MSU-1 pack');
+  if (name === meta.name) return;
+  if (!meta.src) meta.src = meta.name;
+  meta.name = name;
+  await kvSet('msu-packs', packs);
+  if (id === currentPack && msu.count) showMsu(name);
+  renderMusicMenu();
+  status(`Renamed to ${name}.`, 'ok');
+}
+
 function renderMusicMenu() {
   const m = $('music-menu');
   if (!m) return;
@@ -1526,6 +1561,7 @@ function renderMusicMenu() {
       `title="${x.fav ? 'Remove from favourites' : 'Add to favourites'}">${x.fav ? '★' : '☆'}</button>` +
       `<button type="button" role="menuitemradio" aria-checked="${!!cur}" class="mm-pick${cur ? ' mm-cur' : ''}" data-act="use" data-id="${x.id}">` +
       `<b>${esc(x.name)}</b><small>${x.count} tracks${x.size ? ' · ' + fmtSize(x.size) : ''}</small></button>` +
+      `<button type="button" class="mm-ren" data-act="ren" data-id="${x.id}" title="Rename" aria-label="Rename ${esc(x.name)}">✎</button>` +
       `<button type="button" class="mm-del" data-act="del" data-id="${x.id}" title="Remove from My packs" aria-label="Remove ${esc(x.name)}">✕</button></div>`;
   }
   h += '<div class="mm-sep"></div>';
@@ -1548,6 +1584,7 @@ async function onMusicMenuClick(e) {
       case 'roll': musicMenu(false); await rollPack(); break;
       case 'use': musicMenu(false); await usePack(id); break;
       case 'fav': await toggleFavPack(id); break;
+      case 'ren': await renamePack(id); break;
       case 'del': await removePack(id); break;
       case 'off': musicMenu(false); await musicOff(); break;
       case 'add': musicMenu(false); ($('r-msu-dir-label').hidden ? $('r-msu-input') : $('r-msu-dir')).click(); break;
@@ -1580,7 +1617,8 @@ function initMsu() {
   loadPacks().then(async () => {
     if (!currentPack) return;
     const data = await kvGet('msu-pack:' + currentPack).catch(() => null);
-    if (data) playPackData(data);
+    const meta = packs.find((x) => x.id === currentPack);
+    if (data) playPackData(meta ? { ...data, name: meta.name } : data);
     else currentPack = null;
   }).catch(() => {}).finally(renderMusicMenu);
 }
