@@ -9,6 +9,7 @@ import { openLibrary, labelOf, isPlainLink, loadList } from './library.js';
 import { createCollection, keyOf, pickFrom } from './collection.js';
 import { relayUrl, ownRelay, setRelayUrl, DEFAULT_RELAY, alttprId, fetchAlttprSeed, baseFor, patchSeed } from './remote.js';
 import * as Kara from './kara/index.js';
+import * as Avian from './avianart.js';
 import { buildUi as buildKaraUi } from './kara/ui.js';
 import { initCustomizer, customizerOn, customRequest } from './custom-ui.js';
 
@@ -263,6 +264,9 @@ function showLast() {
   if (last && last.alttpr) {
     $('r-seed-out').textContent = `alttpr.com seed ${last.alttpr}`;
     $('r-seed-out').title = 'Paste this id, or its alttpr.com link, to load the same seed again';
+  } else if (last && last.avian) {
+    $('r-seed-out').textContent = `AVIANART ${last.race ? 'race seed' : 'seed'} ${last.avian}`;
+    $('r-seed-out').title = 'A seed from AVIANART: its permalink opens on avianart.games, and pasting it here loads it again';
   } else if (last && last.gwaa) {
     $('r-seed-out').textContent = `Kara ${last.race ? 'race seed' : 'seed'} ${last.gwaa}`;
     $('r-seed-out').title = 'A seed from Kara\'s server: its link opens on her site, and pasting it here loads it again';
@@ -278,10 +282,10 @@ function showLast() {
     $('r-seed-out').title = last && last.race ? 'A race seed: its spoiler stays hidden'
       : 'Type this number in the seed box to get the same game again';
   }
-  const canShare = live && (!!last.fields || !!last.alttpr || !!last.kara || !!last.gwaa);
+  const canShare = live && (!!last.fields || !!last.alttpr || !!last.kara || !!last.gwaa || !!last.avian);
   $('r-share').hidden = !canShare;
-  $('r-share-race').hidden = !canShare || !!last.alttpr || !!last.gwaa;   // their link is the link   // an alttpr.com seed's link is the link
-  const code = playing ? playing.code : (last ? (last.code || (last.alttpr ? null : codeForSeed(last.spoiler.seed))) : null);
+  $('r-share-race').hidden = !canShare || !!last.alttpr || !!last.gwaa || !!last.avian;   // their link is the link   // an alttpr.com seed's link is the link
+  const code = playing ? playing.code : (last ? (last.code || (last.alttpr || last.avian ? null : codeForSeed(last.spoiler.seed))) : null);
   renderCode($('r-code'), code);
 }
 
@@ -293,12 +297,13 @@ function noteRom(bytes, name) {
 }
 
 async function copyLink(race) {
-  if (!last || (!last.fields && !last.alttpr && !last.kara)) return;
+  if (!last || (!last.fields && !last.alttpr && !last.kara && !last.gwaa && !last.avian)) return;
   const url = last.alttpr ? `https://alttpr.com/h/${last.alttpr}`
+    : last.avian ? Avian.permLink(last.avian)
     : last.gwaa ? Kara.siteLink(last.gwaa)
     : last.kara ? Kara.buildLink(last.spoiler.seed, last.kara, race)
       : buildLink(last.spoiler.seed, last.fields, race);
-  const what = last.alttpr ? 'alttpr.com link' : last.gwaa ? 'Kara seed link' : race ? 'Race link' : 'Seed link';
+  const what = last.alttpr ? 'alttpr.com link' : last.avian ? 'AVIANART permalink' : last.gwaa ? 'Kara seed link' : race ? 'Race link' : 'Seed link';
   try {
     await navigator.clipboard.writeText(url);
     status(`${what} copied. Anyone who opens it gets the same game (they need their own base ROM).` +
@@ -703,17 +708,101 @@ async function playAlttprSeed(id) {
   }
 }
 
+// ── an AVIANART seed, played here ────────────────────────────────────────────
+// A new seed from one of its presets (hash null), or one by its permalink.
+// Uses the Stop button and its controller, like Kara's server seeds.
+async function playAvian(hash, { preset = null, race = false } = {}) {
+  if (msu.count) msu.unlock();
+  const btn = $('r-generate');
+  if (btn.disabled) return;
+  if (!(await refreshBaseStatus())) {
+    status('First choose your Japanese 1.0 ROM with the Base ROM button.', 'bad');
+    $('r-base-input').click();
+    return;
+  }
+  btn.disabled = true;
+  const avBtn = $('r-avian-go'); if (avBtn) avBtn.disabled = true;
+  $('r-stop').hidden = false;
+  karaAbort = new AbortController();
+  const signal = karaAbort.signal;
+  const started = Date.now();
+  let stage = hash ? `Getting AVIANART seed ${hash}…` : `Asking AVIANART to roll ${preset}…`;
+  const show = () => status(`${stage} ${Math.round((Date.now() - started) / 1000)}s`);
+  const tick = setInterval(show, 1000);
+  show();
+  try {
+    if (!hash) hash = await Avian.generate(preset, { race, signal });
+    const r = await Avian.seed(hash, {
+      signal,
+      onWait: (st, tries) => { stage = `AVIANART is making seed ${hash}${tries > 1 ? ` (try ${tries})` : ''}…`; },
+    });
+    stage = 'Building the ROM…';
+    const jp = await kvGet('base-jp10');
+    const rom = await Avian.buildRom(jp, r, { get: kvGet, set: kvSet });
+    const m = Avian.meta(r);
+    const raceSeed = Avian.isRace(m);
+    applyCosmetics(rom, { menuSpeed: false });
+    if (msu.count) rom[0x18021A] = 0x01;
+    const sprite = await kvGet('sprite').catch(() => null);
+    if (sprite && sprite.bytes) {
+      try { applySprite(rom, parseSprite(sprite.bytes)); } catch (e) { console.warn('[randomizer] sprite skipped:', e); }
+    }
+    updateChecksum(rom);
+    const code = codeFromRom(rom);
+    const name = `AVIANART - ${hash}.sfc`;
+    const presetName = preset || m.preset || m.name || '';
+    last = { rom, name, avian: hash, avianPreset: presetName, code, race: raceSeed, spoiler: { ...(r.spoiler || {}), seed: hash } };
+    playing = null;
+    showLast();
+    // its OnlyADKD-style presets get the tracker's OnlyADKD mode
+    const info = Avian.presetInfo(preset);
+    if (info && info.onlyadkd && window.UnifiedOnlyAdkd && !window.UnifiedOnlyAdkd.on()) window.UnifiedOnlyAdkd.set(true);
+    const gaps = Avian.trackerGaps(m);
+    status(`Ready: AVIANART ${raceSeed ? 'race seed' : 'seed'} ${hash}` + (code ? `, code ${codeNames(code).join(' / ')}` : '') +
+      (gaps.length ? `. The tracker doesn't follow ${gaps.join(', ')}.` : ''), 'ok');
+    document.body.classList.remove('rando-open');
+    $('r-toggle').setAttribute('aria-expanded', 'false');
+    try { localStorage.setItem('unified-kara-open', '0'); } catch (e) {}
+    try { await kvSet('last-seed', last); } catch (e) {}
+    window.UnifiedApp.playRom(rom, name, Avian.trackerFor(m));
+  } catch (e) {
+    if (e.cancelled) status('Stopped.', '');
+    else {
+      console.error(e);
+      status(String(e.message || e), 'bad');
+      if (e.needsRelay) { const d = $('rando-bar').querySelector('details#r-rom-more'); if (d) d.open = true; $('r-avian-relay').focus(); }
+    }
+  } finally {
+    clearInterval(tick);
+    karaAbort = null;
+    btn.disabled = false;
+    if (avBtn) avBtn.disabled = false;
+    $('r-stop').hidden = true;
+  }
+}
+
+function rollAvian() {
+  const sel = $('r-avian-preset');
+  let p = sel.value;
+  if (p === 'other') p = $('r-avian-custom').value.trim();
+  if (!p) { status('Type an AVIANART preset name, like jem041/onlyadkdf.', 'bad'); $('r-avian-custom').focus(); return; }
+  if (window.EJS_emulator && !confirm(`Roll a new AVIANART seed (${p})?\n\nThe current game will be closed.`)) return;
+  playAvian(null, { preset: p, race: $('r-avian-race').checked });
+}
+
 // ── "Load a seed": paste a link or a number ──────────────────────────────────
 // This app's seed link -> its settings and seed number; an alttpr.com link or
 // seed id -> that seed; a plain number -> that seed number with the current
 // settings. Then it plays.
 function loadPasted(text) {
   text = String(text || '').trim();
-  if (!text) { status('Paste a seed link, an alttpr.com link, or a seed number.', 'bad'); return false; }
+  if (!text) { status('Paste a seed link, an alttpr.com or AVIANART link, or a seed number.', 'bad'); return false; }
   let url = null;
   try { url = new URL(text); } catch (e) {}
   const gk = Kara.gwaaId(text);
   if (gk) { setGen('kara'); playGwaa(gk); return true; }
+  const av = Avian.avianId(text);
+  if (av) { playAvian(av); return true; }
   if (url && url.searchParams.get('gen') === 'kara') {
     const k = Kara.readLink(url.search);
     if (!k) { status('That link doesn\'t have a seed in it.', 'bad'); return false; }
@@ -1542,8 +1631,8 @@ export function init() {
     const text = (e.clipboardData && e.clipboardData.getData('text')) || '';
     let isLink = false;
     try { isLink = new URL(text.trim()).searchParams.has('seed'); } catch (x) {}
-    if (!isLink && !alttprId(text) && !Kara.gwaaId(text)) return;
-    if (!/alttpr\.com|alttpr\.gwaa\.kiwi\/seed\/|[?&]seed=/.test(text)) return;   // a bare id or number only from the box
+    if (!isLink && !alttprId(text) && !Kara.gwaaId(text) && !Avian.avianId(text)) return;
+    if (!/alttpr\.com|alttpr\.gwaa\.kiwi\/seed\/|avianart\.games\/perm\/|[?&]seed=/.test(text)) return;   // a bare id or number only from the box
     e.preventDefault();
     loadPasted(text);
   });
@@ -1554,6 +1643,24 @@ export function init() {
     setRelayUrl($('r-relay').value);
     $('r-relay').value = ownRelay();
     status(ownRelay() ? 'Using your own relay for alttpr.com seeds.' : 'Using the built-in relay for alttpr.com seeds.', 'ok');
+  });
+  // AVIANART: presets, roll button and its relay
+  const avSel = $('r-avian-preset');
+  Avian.PRESETS.forEach((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.label; o.title = p.note || ''; avSel.insertBefore(o, avSel.lastElementChild); });
+  avSel.selectedIndex = 0;
+  try { const v = localStorage.getItem('unified-avianart-preset'); if (v && [...avSel.options].some((o) => o.value === v)) avSel.value = v; } catch (e) {}
+  try { $('r-avian-custom').value = localStorage.getItem('unified-avianart-custom') || ''; } catch (e) {}
+  const avOther = () => { $('r-avian-custom').hidden = avSel.value !== 'other'; };
+  avOther();
+  avSel.addEventListener('change', () => { avOther(); try { localStorage.setItem('unified-avianart-preset', avSel.value); } catch (e) {} });
+  $('r-avian-custom').addEventListener('change', () => { try { localStorage.setItem('unified-avianart-custom', $('r-avian-custom').value.trim()); } catch (e) {} });
+  $('r-avian-go').addEventListener('click', rollAvian);
+  $('r-avian-relay').placeholder = Avian.DEFAULT_RELAY.replace(/^https:\/\//, '');
+  $('r-avian-relay').value = Avian.ownRelay();
+  $('r-avian-relay').addEventListener('change', () => {
+    Avian.setRelayUrl($('r-avian-relay').value);
+    $('r-avian-relay').value = Avian.ownRelay();
+    status(Avian.ownRelay() ? 'Using your own relay for AVIANART seeds.' : 'Using the built-in relay for AVIANART seeds.', 'ok');
   });
   $('r-share').addEventListener('click', () => copyLink(false));
   $('r-share-race').addEventListener('click', () => copyLink(true));

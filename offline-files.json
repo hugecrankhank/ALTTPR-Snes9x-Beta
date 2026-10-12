@@ -114,6 +114,7 @@
   "randomizer/regions/Standard/TowerOfHera.js",
   "randomizer/regions/Standard/TurtleRock.js",
   "randomizer/remote.js",
+  "randomizer/avianart.js",
   "randomizer/share.js",
   "randomizer/sprite.js",
   "randomizer/worker.js",

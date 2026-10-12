@@ -212,6 +212,11 @@
   #rando-bar .paste-field { flex: none; }
   #rando-bar input#r-paste { width: 22em; min-width: 22em; text-transform: none; letter-spacing: 0; }
   #rando-bar input#r-relay { width: 16em; }
+  #rando-bar input#r-avian-relay { width: 16em; }
+  #rando-bar #r-avian-custom { width: 11em; }
+  #rando-bar .avian-field .sprite-row { flex-wrap: wrap; align-items: center; }
+  #rando-bar .avian-field select { max-width: 100%; }
+  #rando-bar .avian-race { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-weight: 400; }
 
   /* seed links (randomizer/share.js) */
   #r-shared { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex-basis: 100%;
@@ -618,8 +623,18 @@
     </label>
     <div class="f paste-field">Load a seed
       <div class="sprite-row">
-        <input type="text" id="r-paste" placeholder="Seed link, alttpr.com or gwaa.kiwi link, or number" autocomplete="off" spellcheck="false">
+        <input type="text" id="r-paste" placeholder="Seed link, alttpr.com, gwaa.kiwi or AVIANART link, or number" autocomplete="off" spellcheck="false">
         <button type="button" id="r-paste-go" title="Load and play the seed you pasted">Load</button>
+      </div>
+    </div>
+    <div class="f paste-field avian-field" title="Roll a seed on avianart.games (its Door Randomizer server) and play it here">AVIANART
+      <div class="sprite-row">
+        <select id="r-avian-preset">
+          <option value="other">Other preset…</option>
+        </select>
+        <input type="text" id="r-avian-custom" hidden placeholder="namespace/preset" autocomplete="off" spellcheck="false" autocapitalize="off">
+        <label class="avian-race" title="A race seed: AVIANART keeps its spoiler hidden"><input type="checkbox" id="r-avian-race"> Race</label>
+        <button type="button" id="r-avian-go" title="Roll a new seed with this AVIANART preset and play it">Roll</button>
       </div>
     </div>
     <div class="f sprite-field">Link sprite
@@ -713,6 +728,9 @@
       </div>
       <label class="f" title="Leave empty to use the built-in relay for alttpr.com seeds, or enter your own (see the README)">alttpr.com relay
         <input type="url" id="r-relay" placeholder="https://….workers.dev" autocomplete="off" spellcheck="false">
+      </label>
+      <label class="f" title="Leave empty to use the built-in relay for AVIANART seeds, or enter your own (see the README)">AVIANART relay
+        <input type="url" id="r-avian-relay" placeholder="https://….workers.dev" autocomplete="off" spellcheck="false">
       </label>
       <label class="f">Item quickswap
         <select id="r-quickswap">
