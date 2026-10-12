@@ -5,7 +5,8 @@
  * It's the Randomizer bar's own Generate & Play with the Seed box emptied, so a
  * new random seed is made with whatever the bar is set to now: the generator
  * (alttpr.com or Kara's branch), Made by, preset and every setting, your sprite,
- * MSU pack and ROM options. Full edition only (Lite has no randomizer).
+ * MSU pack and ROM options. After an AVIANART seed it rolls that AVIANART
+ * preset again instead. Full edition only (Lite has no randomizer).
  */
 (function () {
   'use strict';
@@ -15,6 +16,14 @@
     var gen = $('r-generate'), seed = $('r-seed');
     if (!gen || !seed) return;
     if (gen.disabled) return;   // a seed is being made already
+    // after an AVIANART seed: the same AVIANART preset again
+    var av = window.UnifiedAvian;
+    if (av && av.active()) {
+      if (window.EJS_emulator &&
+          !confirm('Reroll: a new AVIANART seed (' + av.preset() + ')?\n\nThe current game will be closed.')) return;
+      av.reroll();
+      return;
+    }
     if (window.EJS_emulator &&
         !confirm('Reroll: start a new seed with the same settings?\n\nThe current game will be closed.')) return;
     seed.value = '';

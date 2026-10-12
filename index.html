@@ -214,6 +214,7 @@
   #rando-bar input#r-relay { width: 16em; }
   #rando-bar input#r-avian-relay { width: 16em; }
   #rando-bar #r-avian-custom { width: 11em; }
+  #rando-bar #r-avian-load { flex: 1; min-width: 12em; text-transform: none; letter-spacing: 0; }
   #rando-bar .avian-field .sprite-row { flex-wrap: wrap; align-items: center; }
   #rando-bar .avian-field select { max-width: 100%; }
   #rando-bar .avian-race { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-weight: 400; }
@@ -635,6 +636,10 @@
         <input type="text" id="r-avian-custom" hidden placeholder="namespace/preset" autocomplete="off" spellcheck="false" autocapitalize="off">
         <label class="avian-race" title="A race seed: AVIANART keeps its spoiler hidden"><input type="checkbox" id="r-avian-race"> Race</label>
         <button type="button" id="r-avian-go" title="Roll a new seed with this AVIANART preset and play it">Roll</button>
+      </div>
+      <div class="sprite-row">
+        <input type="text" id="r-avian-load" placeholder="AVIANART permalink or hash" autocomplete="off" spellcheck="false" autocapitalize="off">
+        <button type="button" id="r-avian-load-go" title="Load and play this AVIANART seed">Load</button>
       </div>
     </div>
     <div class="f sprite-field">Link sprite

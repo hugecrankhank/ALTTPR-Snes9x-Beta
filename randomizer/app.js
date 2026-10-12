@@ -750,7 +750,7 @@ async function playAvian(hash, { preset = null, race = false } = {}) {
     updateChecksum(rom);
     const code = codeFromRom(rom);
     const name = `AVIANART - ${hash}.sfc`;
-    const presetName = preset || m.preset || m.name || '';
+    const presetName = preset || '';   // a loaded permalink rerolls with the AVIANART row's preset
     last = { rom, name, avian: hash, avianPreset: presetName, code, race: raceSeed, spoiler: { ...(r.spoiler || {}), seed: hash } };
     playing = null;
     showLast();
@@ -780,6 +780,22 @@ async function playAvian(hash, { preset = null, race = false } = {}) {
     $('r-stop').hidden = true;
   }
 }
+
+// The header's Reroll: after an AVIANART seed it rolls that seed's preset again.
+function avianRerollPreset() {
+  if (!last || !last.avian) return null;
+  if (last.avianPreset) return last.avianPreset;
+  const v = $('r-avian-preset').value;
+  return v === 'other' ? ($('r-avian-custom').value.trim() || null) : v;
+}
+window.UnifiedAvian = {
+  active: () => !!avianRerollPreset(),
+  preset: avianRerollPreset,
+  reroll: () => {
+    const p = avianRerollPreset();
+    if (p) playAvian(null, { preset: p, race: !!last.race });
+  },
+};
 
 function rollAvian() {
   const sel = $('r-avian-preset');
@@ -1655,6 +1671,16 @@ export function init() {
   avSel.addEventListener('change', () => { avOther(); try { localStorage.setItem('unified-avianart-preset', avSel.value); } catch (e) {} });
   $('r-avian-custom').addEventListener('change', () => { try { localStorage.setItem('unified-avianart-custom', $('r-avian-custom').value.trim()); } catch (e) {} });
   $('r-avian-go').addEventListener('click', rollAvian);
+  const avLoad = () => {
+    const t = $('r-avian-load').value.trim();
+    const h = Avian.avianId(t) || (/^[A-Za-z0-9]{4,32}$/.test(t) ? t : null);
+    if (!h) { status('Paste an AVIANART permalink (avianart.games/perm/…) or its hash.', 'bad'); return; }
+    if (window.EJS_emulator && !confirm(`Load AVIANART seed ${h}?\n\nThe current game will be closed.`)) return;
+    $('r-avian-load').value = '';
+    playAvian(h);
+  };
+  $('r-avian-load-go').addEventListener('click', avLoad);
+  $('r-avian-load').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); avLoad(); } });
   $('r-avian-relay').placeholder = Avian.DEFAULT_RELAY.replace(/^https:\/\//, '');
   $('r-avian-relay').value = Avian.ownRelay();
   $('r-avian-relay').addEventListener('change', () => {

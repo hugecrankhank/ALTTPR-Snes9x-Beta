@@ -361,7 +361,9 @@ Randomizer server, the one PedChicken uses on Discord) and plays it here. Pick a
 press **Roll**; **Other preset…** takes any AVIANART preset name, like `jem041/onlyadkdf`
 (`namespace/preset`, as PedChicken shows it). **Race** asks for a race seed (spoiler hidden).
 Pasting an AVIANART permalink (`https://avianart.games/perm/…`) into **Load a seed** plays
-that exact seed, so everyone in a race can load the same one.
+that exact seed, so everyone in a race can load the same one; the AVIANART row has its own
+permalink box and **Load** button too. After an AVIANART seed, the header's **Reroll** rolls
+that preset again on AVIANART (for a loaded permalink, the preset picked in the AVIANART row).
 
 The ROM is built in your browser from your Japanese 1.0 ROM, then your sprite, music and
 other options go on. The tracker follows the seed's world state, dungeon items, GT
