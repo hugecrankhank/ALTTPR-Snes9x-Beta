@@ -9,6 +9,19 @@
  *
  * Opcodes handled: DeviceList, Attach, Info, Name, GetAddress.
  */
+// The app's OnlyADKD button for the map's top bar (onlyadkd.js at the app
+// root). Loaded from here because update-hutch.py keeps this one line in
+// Hutch's pages, so nothing of his has to be edited.
+(function () {
+  try {
+    var me = document.currentScript && document.currentScript.src;
+    if (!me || !/\/map\.html$/.test(location.pathname)) return;
+    var s = document.createElement('script');
+    s.src = new URL('../onlyadkd.js', me).href;
+    (document.head || document.documentElement).appendChild(s);
+  } catch (e) {}
+})();
+
 (function () {
   'use strict';
   var RealWS = window.WebSocket;

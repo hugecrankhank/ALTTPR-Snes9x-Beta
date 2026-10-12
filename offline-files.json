@@ -1,6 +1,6 @@
 {
  "edition": "full",
- "version": "0d805be22815",
+ "version": "531e536856f2",
  "cache": "alttpr-s9x-full-v1",
  "files": [
   "./",
@@ -124,6 +124,7 @@
   "sprites.json",
   "sw.js",
   "tracker-mode.js",
+  "onlyadkd.js",
   "tablet.js",
   "tracker/.github/FUNDING.yml",
   "tracker/LICENSE",

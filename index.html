@@ -802,6 +802,7 @@
 <script src="bridge/sni-bridge.js"></script>
 <script src="tracker/hutch-versions.js"></script>
 <script src="tracker-mode.js"></script>
+<script src="onlyadkd.js"></script>
 <script src="tablet.js"></script>
 
 <script src="portal.js"></script>
@@ -848,10 +849,12 @@
         else more += '&' + k + '=' + encodeURIComponent(trackerExtra.more[k]);
       });
     }
-    return {
+    var u = {
       items: trackerBase() + 'itemtracker.html?scale=1' + common + (trackerExtra ? '&swordless=' + encodeURIComponent(trackerExtra.swordless || 'no') + '&bossshuffle=' + encodeURIComponent(trackerExtra.bossshuffle || 'no') : '') + more,
       map: trackerBase() + 'map.html?zoom=0.6&logic=nmg&entranceshuffle=' + entrance + '&entrancemode=none' + common + mapExtra + more,
     };
+    // OnlyADKD (onlyadkd.js, the button in the map's top bar) sets the mode's own flags
+    return window.UnifiedOnlyAdkd ? window.UnifiedOnlyAdkd.urls(u) : u;
   }
   function trackerBase() { return window.UnifiedTracker ? window.UnifiedTracker.base() : 'tracker/'; }
   function trackerOff() { return !!(window.UnifiedTracker && window.UnifiedTracker.off()); }
