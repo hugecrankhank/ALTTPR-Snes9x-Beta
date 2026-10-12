@@ -48,8 +48,8 @@ reloads by itself when you save it.
 | `hp_1` | Down to 1 heart | | `swap_by` | B and Y swapped, 20 s |
 | `magic_full` / `magic_drain` | Refill / drain magic | | `one_hit` | One-heart mode, 30 s |
 | `rupees_plus` / `rupees_minus` | ±50 rupees | | `no_magic` | Magic locked, 30 s |
-| `bombs_plus` / `bombs_none` | +10 / lose all bombs | | | |
-| `arrows_plus` / `arrows_none` | +10 / lose all arrows | | | |
+| `bombs_plus` / `bombs_none` | +10 / lose all bombs | | `ice` | Ice physics (slippery floors everywhere), 20 s |
+| `arrows_plus` / `arrows_none` | +10 / lose all arrows | | `cucco_storm` | Cucco attack: angry cuccos fly at Link, 30 s (outdoors only) |
 
 **App rolls** (use the app's own buttons):
 
@@ -66,7 +66,8 @@ seed** button appears in that menu. If a roll can't happen (no favourites
 yet, no packs), the feed says so instead of popping up a dialog.
 
 Timed effects count only time spent in play and stack (a second gift adds
-time). They only filter buttons or hold a value each frame, so save states,
+time). `ice` and `cucco_storm` switch on features built into the randomizer
+ROM itself; on a ROM without them the feed says so and nothing happens. They only filter buttons or hold a value each frame, so save states,
 resets and reloads can't leave the game stuck changed.
 
 ## mapping.json

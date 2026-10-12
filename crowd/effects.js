@@ -98,6 +98,16 @@
       input: function (p) { return p & ~B.Y; } },
     swap_by:     { name: 'B and Y swapped', good: false, secs: 20,
       input: function (p) { return swapBits(p, B.B, B.Y); } },
+    // These two flip switches the randomizer ROM itself keeps for crowd
+    // control (z3randomizer: IceModifier $7F50C7, CuccoStormer $7F50C5).
+    // `hold` sets the switch while the effect runs and clears it otherwise,
+    // so a save state taken mid-effect can't leave it stuck on. `romCheck` is
+    // the ROM's own read of that switch; without it the effect is skipped.
+    ice:         { name: 'Ice physics', good: false, secs: 20,
+      hold: { addr: 0x150C7, on: 0x01 }, romCheck: [0x0F, 0xC7, 0x50, 0x7F] },   // ORA.l $7F50C7
+    cucco_storm: { name: 'Cucco attack', good: false, secs: 30, outdoors: true,
+      hold: { addr: 0x150C5, on: 0x01 }, romCheck: [0xAF, 0xC5, 0x50, 0x7F] },   // LDA.l $7F50C5
+
     one_hit:     { name: 'One-heart mode', good: false, secs: 30,
       frame: function (r) { if (r[A.HP] > 8) r[A.HP] = 8; r[A.HP_FILL] = 0; } },
     no_magic:    { name: 'Magic locked', good: false, secs: 30,
@@ -192,8 +202,38 @@
     return true;
   }
 
+  // Does this ROM read the switch an effect needs? Looked up once per ROM.
+  var romSupport = {}, romKey = '';
+  function romHas(core, sig) {
+    var rom; try { rom = core.rom(); } catch (e) { return false; }
+    if (!rom || !rom.length) return false;
+    var key = rom.length + ':' + rom[0x7FDC] + ',' + rom[0x7FDD] + ',' + rom[0x7FC0] + ',' + rom[0x7FC1] + ',' + rom[0x7FC2];
+    if (key !== romKey) { romKey = key; romSupport = {}; }
+    var k = sig.join(',');
+    if (!(k in romSupport)) {
+      var found = false;
+      outer: for (var i = 0, n = rom.length - sig.length; i <= n; i++) {
+        if (rom[i] !== sig[0]) continue;
+        for (var j = 1; j < sig.length; j++) if (rom[i + j] !== sig[j]) continue outer;
+        found = true; break;
+      }
+      romSupport[k] = found;
+    }
+    return romSupport[k];
+  }
+
+  function holdSwitches(core, ram) {
+    if (ram.length < 0x20000) return;
+    for (var id in EFFECTS) {
+      var h = EFFECTS[id].hold; if (!h) continue;
+      var want = active[id] ? h.on : 0;
+      if (ram[h.addr] !== want && romHas(core, EFFECTS[id].romCheck)) ram[h.addr] = want;
+    }
+  }
+
   function onFrame(core) {
     var ram = core.wram();
+    holdSwitches(core, ram);
     if (!inPlay(ram)) return;
     // timed effects
     for (var id in active) {
@@ -205,6 +245,10 @@
     var job = queue.shift();
     if (!job) return;
     var f = EFFECTS[job.id];
+    if (f.romCheck && !romHas(core, f.romCheck)) {
+      feed(f.name + ' needs a randomizer ROM (not this one)', 'info'); render(); return;
+    }
+    if (f.outdoors && ram[0x1B]) feed(f.name + ' only shows up outdoors', 'info');
     if (f.secs) active[job.id] = (active[job.id] || 0) + Math.round(f.secs * (core.fps || 60.1));
     else if (f.app) { try { f.app(); } catch (e) { console.warn('[crowd]', job.id, e); } }
     else f.apply(ram);
