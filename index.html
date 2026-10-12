@@ -490,6 +490,9 @@
   <label class="ctl" id="tracker-sel" title="Hutch's tracker: his newest release, his beta, or Off for the game on its own, full screen">Tracker
     <select id="tracker-mode"></select>
   </label>
+  <label class="ctl" id="onlyadkd-sel" title="OnlyADKD: sets every OnlyADKD option on the trackers and loads its prebuilt entrance map (same as the OnlyADKD button next to New Game on the map)">
+    <input type="checkbox" id="onlyadkd-toggle"> OnlyADKD
+  </label>
 
   <!-- Desktop layout (desktop.js): tracker windows -->
   <div id="win-bar" role="group" aria-label="Tracker windows">
@@ -880,6 +883,14 @@
       else loadTrackers();
       setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 60);
     });
+  })();
+  // OnlyADKD (onlyadkd.js): header checkbox, kept in step with the map's button
+  (function () {
+    var box = $('onlyadkd-toggle'), O = window.UnifiedOnlyAdkd;
+    if (!box || !O) { if ($('onlyadkd-sel')) $('onlyadkd-sel').hidden = true; return; }
+    box.checked = O.on();
+    box.addEventListener('change', function () { O.set(this.checked); });
+    window.addEventListener('trackermode', function () { box.checked = O.on(); });
   })();
   if (window.UnifiedTablet) {
     $('layout').value = window.UnifiedTablet.pref();

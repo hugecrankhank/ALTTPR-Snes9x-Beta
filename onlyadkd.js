@@ -107,7 +107,7 @@
     b.title = on
       ? 'OnlyADKD is on: its settings and prebuilt entrance map are loaded. Click to turn it off.'
       : 'Turn on OnlyADKD: sets every OnlyADKD option and loads its prebuilt entrance map';
-    b.style.cssText = 'margin-left:4px;border-radius:3px;padding:0 7px;font-size:11px;line-height:1.7;cursor:pointer;font-weight:600;' +
+    b.style.cssText = 'margin-right:4px;border-radius:3px;padding:0 7px;font-size:11px;line-height:1.7;cursor:pointer;font-weight:600;' +
       (on ? 'background:#0f5f73;color:#bff6ff;border:1px solid #39d0f0;box-shadow:0 0 6px #39d0f0;'
           : 'background:#0c1a1f;color:#7fd8ea;border:1px solid #1f4f5c;');
     b.addEventListener('click', function () {
@@ -120,7 +120,8 @@
       if (isOn()) p.set('preset', 'onlyadkd'); else p.delete('preset');
       location.search = p.toString();
     });
-    reset.parentNode.insertBefore(b, reset.nextSibling);
+    // before New Game: the bar's far end gets cut off in narrow map panels
+    reset.parentNode.insertBefore(b, reset);
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', addButton);
