@@ -152,13 +152,34 @@ async function startTikTok() {
   if (!cfg.username || cfg.username === 'your_tiktok_username') {
     log('Set "username" in mapping.json to your TikTok name (without @). Or run with --test.'); process.exit(1);
   }
-  let TikTokLiveConnection;
-  try { ({ TikTokLiveConnection } = await import('tiktok-live-connector')); }
-  catch { log('tiktok-live-connector is not installed. Run "npm install" in this folder first.'); process.exit(1); }
+  // TikTok connections must be signed by an outside "sign server". Euler Stream
+  // (the library default) now wants a paid plan for this, so the default here
+  // is tik.tools, which has a free key. "signServer" in mapping.json can be
+  // "tiktools", "euler", or a full https:// URL of any compatible server.
+  const SIGN_SERVERS = { tiktools: 'https://api.tik.tools', euler: 'https://api.eulerstream.com' };
+  const signChoice = String(cfg.signServer || 'tiktools');
+  const signUrl = SIGN_SERVERS[signChoice.toLowerCase()] || signChoice;
+  const key = String(cfg.signApiKey || '').trim();
+  if (!/^https:\/\//.test(signUrl)) {
+    log(`"signServer" in mapping.json should be "tiktools", "euler", or an https:// address (got "${signChoice}").`); process.exit(1);
+  }
+  if (!key || key === 'paste_your_key_here') {
+    log('No "signApiKey" in mapping.json. Get a free key at https://tik.tools/login,');
+    log('paste it into mapping.json as "signApiKey", then start the bridge again.'); process.exit(1);
+  }
+  // The library reads these when it loads, so set them before importing it.
+  process.env.SIGN_API_URL = signUrl;
+  process.env.SIGN_API_KEY = key;
 
-  const opts = { enableExtendedGiftInfo: true };
-  if (cfg.signApiKey) opts.signApiKey = cfg.signApiKey;
-  const conn = new TikTokLiveConnection(cfg.username, opts);
+  let TikTokLiveConnection, SignConfig;
+  try { ({ TikTokLiveConnection, SignConfig } = await import('tiktok-live-connector')); }
+  catch { log('tiktok-live-connector is not installed. Run "npm install" in this folder first.'); process.exit(1); }
+  if (SignConfig) { SignConfig.basePath = signUrl; SignConfig.apiKey = key; }
+  log(`signing TikTok connections through ${new URL(signUrl).host}`);
+
+  // Extended gift info is a separate TikTok lookup that often fails; gift names
+  // already arrive with each gift, so it's not needed.
+  const conn = new TikTokLiveConnection(cfg.username, { enableExtendedGiftInfo: false, signApiKey: key });
 
   conn.on('gift', (d) => {
     const type = d.giftDetails?.giftType;
@@ -182,7 +203,11 @@ async function startTikTok() {
     } catch (e) {
       const msg = e?.message || String(e);
       liveText = 'Waiting for TikTok LIVE';
-      log(`couldn't join @${cfg.username}'s LIVE (${msg}). Are you live? Retrying in 30s.`);
+      if (/plan|api key|apikey|unauthori[sz]ed|forbidden|\b40[123]\b/i.test(msg)) {
+        log(`the sign server refused the connection (${msg}). Check "signApiKey" in mapping.json. Retrying in 30s.`);
+      } else {
+        log(`couldn't join @${cfg.username}'s LIVE (${msg}). Are you live? Retrying in 30s.`);
+      }
       setTimeout(go, 30000);
     }
   }

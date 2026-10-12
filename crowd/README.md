@@ -18,7 +18,9 @@ TikTok LIVE ──► bridge.mjs (your PC) ──ws://localhost:21213──► g
 
 1. Install Node.js 20 or newer.
 2. In `crowd/bridge`: `npm install`
-3. Edit `mapping.json`: set `username` (no @), and map gifts to effects.
+3. Get a free key at https://tik.tools/login. Edit `mapping.json`: set
+   `username` (no @), paste the key into `signApiKey`, and map gifts to effects.
+   (Windows PowerShell: use `npm.cmd install` / `npm.cmd start` if `npm` is blocked.)
 4. `npm start` (or `node bridge.mjs`). Go live on TikTok; the bridge retries
    every 30 s until it finds your LIVE.
 5. In the game on the **same PC**: ⋯ menu → **Crowd effects** → turn on.
@@ -72,7 +74,10 @@ resets and reloads can't leave the game stuck changed.
 - `likes`: `{ "every": 300, "effect": "heal_1" }` fires once per 300 likes.
 - `follow`, `share`: effect id; once per viewer per 10 minutes.
 - `maxPerGift`: cap for a gift streak (e.g. 20 Roses still gives 5 heals).
-- `signApiKey`: optional Euler Stream key (see below).
+- `signServer`: who signs the TikTok connection: `"tiktools"` (default, free
+  key), `"euler"` (Euler Stream, needs their paid Business plan now), or a full
+  `https://` address of a compatible server.
+- `signApiKey`: your key for that sign server (required).
 - `allowedOrigins`: pages allowed to connect to the bridge.
 
 ## Good to know
@@ -83,8 +88,10 @@ resets and reloads can't leave the game stuck changed.
   `cloudflared tunnel --url http://localhost:21213`) and set the menu's bridge
   address to the `wss://…` address it prints, and add the game's origin to
   `allowedOrigins` if you open it from somewhere else.
-- **TikTok connection:** `tiktok-live-connector` is an unofficial library. It
-  signs its TikTok connection through the Euler Stream service; if you hit
-  rate limits, a free key from eulerstream.com goes in `signApiKey`. TikTok
-  changes can break it until the library updates (`npm update`).
+- **TikTok connection:** `tiktok-live-connector` is an unofficial library.
+  TikTok requires each LIVE connection to be signed by an outside sign server.
+  Euler Stream (the library default) now charges for this, so the bridge uses
+  tik.tools: make a free account at https://tik.tools/login and paste the key
+  into `signApiKey`. TikTok changes can break it until the library updates
+  (`npm update`).
 - Not for races: this changes the game mid-run.

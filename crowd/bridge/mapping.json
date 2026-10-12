@@ -1,5 +1,7 @@
 {
   "username": "your_tiktok_username",
+  "signServer": "tiktools",
+  "signApiKey": "paste_your_key_here",
   "port": 21213,
   "maxPerGift": 5,
 
