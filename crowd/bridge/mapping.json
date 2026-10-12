@@ -1,8 +1,8 @@
 {
   "username": "your_tiktok_username",
+  "source": "tikfinity",
   "signServer": "tiktools",
-  "signApiKey": "paste_your_key_here",
-  "port": 21213,
+  "signApiKey": "",
   "maxPerGift": 5,
 
   "gifts": {

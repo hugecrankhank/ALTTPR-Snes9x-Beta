@@ -5,27 +5,28 @@ rupees, bombs, arrows, inverted controls, no sword and more. The ROM is never
 changed; any seed works.
 
 ```
-TikTok LIVE ──► bridge.mjs (your PC) ──ws://localhost:21213──► game page ──► Snes9x RAM / buttons
+TikTok LIVE ──► TikFinity ──ws://localhost:21213──► bridge.mjs ──ws://localhost:21214──► game page ──► Snes9x RAM / buttons
 ```
 
 - `effects.js` runs in the game page. It queues effects and applies them only
   in normal play (not in menus, text boxes or screen transitions), about
   0.75 s apart, and shows a small feed on the game picture.
-- `bridge/bridge.mjs` runs on the PC you stream from. It joins your LIVE and
-  forwards events using `bridge/mapping.json`.
+- `bridge/bridge.mjs` runs on the PC you stream from. It hears your LIVE
+  through TikFinity (free) and forwards events using `bridge/mapping.json`.
 
 ## Setup
 
-1. Install Node.js 20 or newer.
-2. In `crowd/bridge`: `npm install`
-3. Get a free key at https://tik.tools/login. Edit `mapping.json`: set
-   `username` (no @), paste the key into `signApiKey`, and map gifts to effects.
+1. Install Node.js 20 or newer, and **TikFinity** (free, https://tikfinity.zerody.one).
+2. Open TikFinity, log in with your TikTok account, and leave it running. Its
+   Events API / WebSocket port should be 21213 (the default).
+3. In `crowd/bridge`: `npm install`, then `npm start`.
    (Windows PowerShell: use `npm.cmd install` / `npm.cmd start` if `npm` is blocked.)
-4. `npm start` (or `node bridge.mjs`). Go live on TikTok; the bridge retries
-   every 30 s until it finds your LIVE.
-5. In the game on the **same PC**: ⋯ menu → **Crowd effects** → turn on.
-   The status line should say *connected*. If the browser asks to allow
-   access to devices on your local network, allow it.
+   It should print *connected to TikFinity*.
+4. In the game on the **same PC**: ⋯ menu → **Crowd effects** → turn on, with
+   the address `ws://localhost:21214`. The status line should say
+   *connected*. If the browser asks to allow access to devices on your local
+   network, allow it.
+5. Go live. Map gifts to effects in `mapping.json`.
 
 Every gift that arrives is printed in the bridge window with its exact name,
 even unmapped ones, so you can copy names into `mapping.json`. The file
@@ -74,10 +75,11 @@ resets and reloads can't leave the game stuck changed.
 - `likes`: `{ "every": 300, "effect": "heal_1" }` fires once per 300 likes.
 - `follow`, `share`: effect id; once per viewer per 10 minutes.
 - `maxPerGift`: cap for a gift streak (e.g. 20 Roses still gives 5 heals).
-- `signServer`: who signs the TikTok connection: `"tiktools"` (default, free
-  key), `"euler"` (Euler Stream, needs their paid Business plan now), or a full
-  `https://` address of a compatible server.
-- `signApiKey`: your key for that sign server (required).
+- `source`: `"tikfinity"` (default) or `"direct"`. Direct mode connects to
+  TikTok without TikFinity, using `tiktok-live-connector` and needs `username`,
+  `signServer` (`"euler"` or an `https://` sign server) and a paid
+  `signApiKey`.
+- `port`: the bridge's own port (default 21214; 21213 is TikFinity's).
 - `allowedOrigins`: pages allowed to connect to the bridge.
 
 ## Good to know
@@ -85,13 +87,11 @@ resets and reloads can't leave the game stuck changed.
 - **Phone play:** a page on `https://` can only reach `ws://localhost`, so the
   game must run on the PC with the bridge. To play on a phone, put the bridge
   behind an `https` tunnel (for example
-  `cloudflared tunnel --url http://localhost:21213`) and set the menu's bridge
+  `cloudflared tunnel --url http://localhost:21214`) and set the menu's bridge
   address to the `wss://…` address it prints, and add the game's origin to
   `allowedOrigins` if you open it from somewhere else.
-- **TikTok connection:** `tiktok-live-connector` is an unofficial library.
-  TikTok requires each LIVE connection to be signed by an outside sign server.
-  Euler Stream (the library default) now charges for this, so the bridge uses
-  tik.tools: make a free account at https://tik.tools/login and paste the key
-  into `signApiKey`. TikTok changes can break it until the library updates
-  (`npm update`).
+- **TikTok connection:** TikTok requires every LIVE connection to be signed by
+  an outside sign server. Euler Stream (used by `tiktok-live-connector`) and
+  tik.tools both charge for this now, which is why the default goes through
+  TikFinity, which handles the TikTok side for free.
 - Not for races: this changes the game mid-run.

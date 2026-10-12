@@ -5,12 +5,20 @@
  * Listens to your TikTok LIVE (gifts, likes, follows, shares) and sends the
  * matching effect to the game page over a WebSocket on this computer.
  *
+ * Two ways to hear the LIVE ("source" in mapping.json):
+ *   "tikfinity" (default, free): the TikFinity desktop app connects to TikTok
+ *       and the bridge reads its Events API on port 21213. The bridge itself
+ *       listens on 21214 (the game's default address).
+ *   "direct": the bridge connects to TikTok itself with tiktok-live-connector.
+ *       That needs a sign-server key ("signServer" + "signApiKey"), which
+ *       Euler Stream and tik.tools both charge for.
+ *
  *   npm install
  *   node bridge.mjs                 # uses mapping.json
  *   node bridge.mjs --test          # no TikTok: type commands to fake events
  *
  * Then in the game: ⋯ menu → Crowd effects → turn on (address
- * ws://localhost:21213). Every gift that arrives is printed with its name, so
+ * ws://localhost:21214). Every gift that arrives is printed with its name, so
  * you can add it to mapping.json.
  *
  * Needs Node 20+. The WebSocket server is built in (no extra packages); the
@@ -32,7 +40,11 @@ const cfgPath = (() => { const i = args.indexOf('--config'); return i >= 0 ? arg
 let cfg = loadConfig();
 function loadConfig() {
   const c = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-  c.port ??= 21213;
+  c.source = String(c.source || 'tikfinity').toLowerCase();
+  c.tikfinityPort ??= 21213;
+  // TikFinity's Events API already uses 21213, so the bridge uses 21214.
+  c.port ??= 21214;
+  if (c.source === 'tikfinity' && c.port === c.tikfinityPort) c.port = c.tikfinityPort + 1;
   c.gifts ??= {};
   c.giftsLower = Object.fromEntries(Object.entries(c.gifts).map(([k, v]) => [String(k).toLowerCase(), v]));
   return c;
@@ -146,6 +158,95 @@ function onSocial(kind, user) {
   fire(effect, user, kind === 'follow' ? 'Followed' : 'Shared');
 }
 
+// ── TikFinity source ───────────────────────────────────────────────────────
+// TikFinity (free desktop app) connects to your LIVE itself and re-sends every
+// event on ws://localhost:21213 as {"event": "gift", "data": {...}}. The bridge
+// listens to that, so no sign server or API key is needed. Node 20 has no
+// built-in WebSocket client, so this is a small one on top of node:net.
+function startTikFinity() {
+  const port = cfg.tikfinityPort;
+  let warned = false;
+  function connect() {
+    const key = crypto.randomBytes(16).toString('base64');
+    const req = http.request({ host: '127.0.0.1', port, path: '/', headers: {
+      Connection: 'Upgrade', Upgrade: 'websocket', 'Sec-WebSocket-Version': '13', 'Sec-WebSocket-Key': key } });
+    req.on('upgrade', (res, socket) => {
+      warned = false;
+      liveText = 'Connected to TikFinity';
+      log(`connected to TikFinity on port ${port}. Gifts, likes, follows and shares will come through while you're live.`);
+      broadcast({ type: 'status', text: liveText });
+      const conn = { socket, buf: Buffer.alloc(0) };
+      socket.on('data', (d) => { conn.buf = Buffer.concat([conn.buf, d]); readClientFrames(conn); });
+      const lost = () => {
+        if (conn.gone) return; conn.gone = true;
+        liveText = 'TikFinity disconnected';
+        broadcast({ type: 'status', text: liveText });
+        log('lost TikFinity, retrying in 5s'); setTimeout(connect, 5000);
+      };
+      socket.on('close', lost); socket.on('error', lost);
+    });
+    req.on('response', (res) => { log(`TikFinity answered with HTTP ${res.statusCode} instead of a WebSocket. Retrying in 10s.`); res.resume(); setTimeout(connect, 10000); });
+    req.on('error', () => {
+      if (!warned) {
+        log(`can't reach TikFinity on port ${port}. Open TikFinity, connect it to your TikTok, and check`);
+        log('its Events API / WebSocket port is ' + port + '. Retrying every 5s quietly.');
+        warned = true;
+      }
+      liveText = 'Waiting for TikFinity'; setTimeout(connect, 5000);
+    });
+    req.end();
+  }
+  connect();
+}
+
+function readClientFrames(c) {
+  for (;;) {
+    const b = c.buf;
+    if (b.length < 2) return;
+    const op = b[0] & 0x0f;
+    let len = b[1] & 0x7f, off = 2;
+    if (len === 126) { if (b.length < 4) return; len = b.readUInt16BE(2); off = 4; }
+    else if (len === 127) { if (b.length < 10) return; len = Number(b.readBigUInt64BE(2)); off = 10; }
+    if (b.length < off + len) return;
+    const data = b.subarray(off, off + len);
+    c.buf = b.subarray(off + len);
+    if (op === 0x0 || op === 0x1) {
+      // TikFinity sends whole messages; continuation frames are joined just in case
+      c.text = (c.text || '') + data.toString('utf8');
+      if (b[0] & 0x80) { const t = c.text; c.text = ''; onTikFinity(t); }
+    } else if (op === 0x9) writeClientFrame(c.socket, data, 0xA);   // ping → pong
+    else if (op === 0x8) { c.socket.end(); return; }
+  }
+}
+function writeClientFrame(socket, payload, op) {   // client frames must be masked
+  const mask = crypto.randomBytes(4), n = payload.length;
+  const head = n < 126 ? Buffer.from([0x80 | op, 0x80 | n]) : Buffer.from([0x80 | op, 0x80 | 126, n >> 8, n & 255]);
+  const body = Buffer.from(payload); for (let i = 0; i < n; i++) body[i] ^= mask[i & 3];
+  try { socket.write(Buffer.concat([head, mask, body])); } catch {}
+}
+
+function onTikFinity(text) {
+  let m; try { m = JSON.parse(text); } catch { return; }
+  const ev = String(m.event || m.type || '').toLowerCase();
+  const d = m.data || {};
+  const user = d.uniqueId || d.user?.uniqueId || d.nickname || d.user?.nickname || 'someone';
+  if (ev === 'gift') {
+    const giftType = d.giftType ?? d.giftDetails?.giftType;
+    if (giftType === 1 && d.repeatEnd === false) return;   // streak still going: wait for the final count
+    const name = d.giftName || d.giftDetails?.giftName || d.extendedGiftInfo?.name || '';
+    onGift(user, name, d.giftId, d.repeatCount || 1);
+  } else if (ev === 'like') onLike(user, d.likeCount || 1);
+  else if (ev === 'follow') onSocial('follow', user);
+  else if (ev === 'share') onSocial('share', user);
+  else if (ev === 'social') {
+    const kind = String(d.displayType || d.label || '').toLowerCase();
+    if (kind.includes('follow')) onSocial('follow', user);
+    else if (kind.includes('share')) onSocial('share', user);
+  } else if (ev === 'streamend') {
+    liveText = 'TikTok LIVE ended'; broadcast({ type: 'status', text: liveText }); log(liveText);
+  }
+}
+
 // ── TikTok connection ──────────────────────────────────────────────────────
 let liveText = '';
 async function startTikTok() {
@@ -236,6 +337,9 @@ function startTest() {
 
 server.listen(cfg.port, '127.0.0.1', () => {
   log(`bridge listening on ws://localhost:${cfg.port}`);
-  if (TEST) startTest(); else startTikTok();
+  if (TEST) startTest();
+  else if (cfg.source === 'tikfinity') startTikFinity();
+  else if (cfg.source === 'direct') startTikTok();
+  else { log(`"source" in mapping.json should be "tikfinity" or "direct" (got "${cfg.source}").`); process.exit(1); }
 });
 server.on('error', (e) => { log(e.code === 'EADDRINUSE' ? `port ${cfg.port} is in use (bridge already running?)` : e.message); process.exit(1); });

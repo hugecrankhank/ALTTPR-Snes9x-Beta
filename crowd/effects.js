@@ -18,13 +18,14 @@
  * cancelled there).
  *
  * Settings (bridge address, on/off) are in the emulator menu under
- * "Crowd effects". The bridge address defaults to ws://localhost:21213.
+ * "Crowd effects". The bridge address defaults to ws://localhost:21214
+ * (21213 is TikFinity's own port).
  */
 (function (root) {
   'use strict';
 
   var SETTINGS_KEY = 's9x-crowd-settings';
-  var cfg = { enabled: false, url: 'ws://localhost:21213', feed: true, allowReroll: false };
+  var cfg = { enabled: false, url: 'ws://localhost:21214', feed: true, allowReroll: false };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
   function saveCfg() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(cfg)); } catch (e) {} }
 
@@ -269,6 +270,10 @@
       } else if (m.type === 'status') {
         bridgeInfo = m.text || ''; render();
         if (m.text) feed(m.text, 'info');
+      } else if (m.event && !m.type && bridgeInfo.indexOf('TikFinity') !== 0) {
+        // TikFinity's own feed ({event, data}): the address points at TikFinity,
+        // not the bridge, which listens one port up in TikFinity mode.
+        bridgeInfo = 'TikFinity, not the bridge: use ws://localhost:21214'; render();
       }
     };
     ws.onclose = function () {
