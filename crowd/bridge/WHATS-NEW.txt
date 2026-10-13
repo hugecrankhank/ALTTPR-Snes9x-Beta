@@ -1,0 +1,86 @@
+ALTTPR CROWD CONTROL - WHAT'S NEW AND HOW TO UPDATE
+==================================================
+
+NEW
+---
+1. Scrolling gift list for your stream
+   A bar that scrolls every gift, its picture, and what it does.
+   Frees up the space the gift chart picture was taking.
+
+2. New effect: Extra enemy  (enemy_spawn)
+   A copy of an enemy that's already in the room appears right next to it.
+   It can't spawn a specific enemy: the game only loads graphics for the
+   enemies in the current area, so anything else would show up garbled.
+   Bosses, shopkeepers and items are never copied. If there are no
+   enemies around, the game's feed says so and nothing happens.
+
+3. Effect lengths can be changed
+   Cucco Attack, OHKO Mode and No Magic now last 20 seconds (they were
+   30), to match the "20 Second Effects" on the gift chart. Change any of
+   them in mapping.json under "durations".
+
+4. mapping.json now matches the gift chart
+   Rose, TikTok, GG, Ice Cream Cone, Clap Clap, Rosa, Dolphin, Friendship
+   Necklace, Slow Motion, Perfume, GOAT Busker, Hi Bear, Doughnut,
+   Scooter, Corgi, Cheering Towel, Confetti, Hand Heart, Boxing Gloves,
+   Fruit Friends, Galaxy - each set to the effect on the chart.
+
+
+HOW TO UPDATE
+-------------
+1. Close the black bridge window if it's open.
+2. Unzip ALTTPR-Crowd-Control.zip and copy everything in it over your
+   bridge folder, including the new "icons" folder. Say yes to replace.
+   (This replaces your mapping.json with the one matching the chart. If
+   you made other changes to yours, copy them back in after.)
+3. Start the bridge again (double-click start-bridge.bat, or
+   npm.cmd start like before - both work).
+   It should now also say:
+     scrolling gift list for OBS: http://localhost:21214/ticker
+4. Refresh the game page in your browser (F5) to get the Extra enemy
+   effect. Nothing else changes in the game's settings.
+
+
+ADDING THE SCROLLING LIST TO YOUR STREAM
+----------------------------------------
+The bridge has to be running for the list to show.
+
+OBS:
+  Sources -> + -> Browser
+  URL:     http://localhost:21214/ticker
+  Width:   1920
+  Height:  72
+  Then drag it to the top or bottom edge of your screen.
+
+TikTok LIVE Studio:
+  Add a "Link" source with the same URL, then size and place it.
+
+Optional, added to the end of the URL:
+  ?height=90       taller bar (default 72)
+  ?speed=100       faster scrolling (default 70)
+  ?bg=0            no background behind the items
+  Example: http://localhost:21214/ticker?height=90&speed=100
+
+It updates by itself whenever mapping.json is saved.
+Gift pictures come from the "icons" folder: a picture named exactly like
+the gift (Rose.png, Galaxy.png...) shows next to it. Add more the same way.
+
+
+TEST IT
+-------
+In the game: ... menu -> Crowd effects. There's a test button for every
+effect, including the new "Extra enemy". Press it, close the menu, and
+stand in a room with an enemy.
+
+
+IF SOMETHING'S OFF
+------------------
+- A gift shows "not mapped" in the bridge window
+    TikTok may spell that gift a little differently (e.g. "Hand Hearts").
+    Copy the exact name from the bridge window into mapping.json.
+
+- The scrolling list is blank or says "Waiting for the bridge"
+    Start the bridge first, then right-click the source -> Refresh.
+
+- Extra enemy says "No enemies here to copy"
+    It only copies enemies already on screen. Find a room with one.
