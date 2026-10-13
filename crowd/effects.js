@@ -25,7 +25,7 @@
   'use strict';
 
   var SETTINGS_KEY = 's9x-crowd-settings';
-  var cfg = { enabled: false, url: 'ws://localhost:21214', feed: true, allowReroll: false };
+  var cfg = { enabled: false, url: 'ws://localhost:21214', feed: true, allowReroll: false, rerollOverlay: true };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
   function saveCfg() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(cfg)); } catch (e) {} }
 
@@ -121,7 +121,7 @@
     msu_roll:    { name: 'Random MSU pack', good: true,
       app: function () { return press(['music-roll-btn'], 'MSU packs (add some and star favourites in ♪)'); } },
     seed_roll:   { name: 'New seed!', good: false,
-      app: function () { return startReroll(); } },
+      app: function (job) { return startReroll(job); } },
   };
 
   // ── app actions ────────────────────────────────────────────────────────
@@ -154,20 +154,28 @@
   }
 
   // A new seed closes this game, so: only if allowed, and with a countdown.
-  var rerollT = null, rerollLeft = 0;
-  function startReroll() {
+  // A banner over the game shows viewers who triggered it, the countdown, the
+  // seed being made, and the result.
+  var REROLL_SECS = 10;
+  var rerollT = null, rerollLeft = 0, rerollBy = '';
+  function startReroll(job) {
     if (!cfg.allowReroll) { feed('Seed reroll is turned off in Crowd effects', 'info'); return false; }
-    if (rerollT) { feed('A new seed is already coming', 'info'); return false; }
+    if (rerollT || rollWatch) { feed('A new seed is already coming', 'info'); return false; }
     if (typeof document === 'undefined' || !document.getElementById('r-generate')) { feed('Not available: the randomizer', 'info'); return false; }
-    rerollLeft = 10;
-    feed('NEW SEED in 10s!', 'bad');
+    rerollBy = (job && job.user && job.user !== 'test') ? job.user : '';
+    rerollLeft = REROLL_SECS;
+    feed('NEW SEED in ' + REROLL_SECS + 's!', 'bad');
+    showRerollCountdown();
     rerollT = setInterval(function () {
       rerollLeft--;
-      if (rerollLeft > 0) { if (rerollLeft <= 3 || rerollLeft === 5) feed('New seed in ' + rerollLeft + '…', 'bad'); render(); return; }
+      if (rerollLeft > 0) {
+        if (rerollLeft <= 3 || rerollLeft === 5) feed('New seed in ' + rerollLeft + '…', 'bad');
+        showRerollCountdown(); render(); return;
+      }
       clearInterval(rerollT); rerollT = null; render();
       // reroll.js without its "are you sure?" box: empty the Seed box, Generate & Play
       var gen = document.getElementById('r-generate'), seed = document.getElementById('r-seed');
-      if (!gen || gen.disabled) { feed('A seed is already being made', 'info'); return; }
+      if (!gen || gen.disabled) { feed('A seed is already being made', 'info'); banner('done-bad', 'No new seed', 'A seed was already being made', 4000); return; }
       quietAlerts();
       if (seed) {
         seed.value = '';
@@ -176,6 +184,7 @@
       }
       feed('Rolling a new seed…', 'bad');
       gen.click();
+      watchRoll();
     }, 1000);
     render();
     return true;
@@ -184,6 +193,79 @@
     if (!rerollT) return;
     clearInterval(rerollT); rerollT = null;
     feed('New seed cancelled', 'info');
+    banner('done-bad', 'New seed cancelled', 'The streamer kept this seed', 4000);
+  }
+  function showRerollCountdown() {
+    banner('count', 'NEW SEED IN ' + rerollLeft,
+      (rerollBy ? 'from ' + rerollBy + ' · ' : '') + 'this game ends', 0, rerollLeft / REROLL_SECS);
+  }
+
+  // Follow the randomizer while it works: its Generate button stays disabled
+  // until the seed is ready, and its status line says what it's doing.
+  var rollWatch = null;
+  function watchRoll() {
+    var started = Date.now(), seenBusy = false;
+    clearInterval(rollWatch);
+    rollWatch = setInterval(function () {
+      var gen = document.getElementById('r-generate'), st = document.getElementById('r-status');
+      var text = st ? st.textContent.trim() : '';
+      var secs = Math.round((Date.now() - started) / 1000);
+      if (gen && gen.disabled) seenBusy = true;
+      if (!seenBusy && secs < 3) { banner('roll', 'Rolling a new seed…', 'Starting', 0); return; }
+      if (gen && gen.disabled && secs < 600) {
+        banner('roll', 'Rolling a new seed…', (text.replace(/\s*\d+s$/, '') || 'Working') + ' · ' + secs + 's', 0);
+        return;
+      }
+      clearInterval(rollWatch); rollWatch = null;
+      var ok = st && st.className === 'ok' && /^(.*\. )?Ready/.test(text);
+      if (ok) {
+        var code = (text.match(/code ([^,(.]+(?: \/ [^,(.]+)*)/) || [])[1];
+        banner('done-ok', 'New seed ready!', (rerollBy ? 'Courtesy of ' + rerollBy : 'Good luck') + (code ? ' · code ' + code.trim() : ''), 6000);
+      } else {
+        banner('done-bad', 'Seed reroll failed', text || 'Kept the current game', 6000);
+      }
+      render();
+    }, 300);
+  }
+
+  // The banner itself: one element on the game picture, re-attached if the
+  // player rebuilds its screen when the new ROM starts.
+  var bannerEl = null, bannerHideT = null;
+  var BANNER_CSS =
+    '.cc-reroll { position: absolute; left: 50%; top: 14%; transform: translateX(-50%); z-index: 26; pointer-events: none;' +
+    ' min-width: 58%; max-width: 92%; box-sizing: border-box; padding: 10px 16px 12px; border-radius: 10px; text-align: center;' +
+    ' background: rgba(10,12,16,.86); color: #fff; font: 700 13px/1.3 system-ui, sans-serif; text-shadow: 0 1px 2px #000;' +
+    ' border: 2px solid #e5534b; box-shadow: 0 4px 18px rgba(0,0,0,.5); transition: opacity .5s; }' +
+    '.cc-reroll .t { font-size: clamp(16px, 4.2vw, 30px); letter-spacing: .04em; }' +
+    '.cc-reroll .s { margin-top: 3px; font-weight: 600; opacity: .9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }' +
+    '.cc-reroll .bar { margin-top: 8px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; }' +
+    '.cc-reroll .bar i { display: block; height: 100%; background: #e5534b; transition: width 1s linear; }' +
+    '.cc-reroll.roll { border-color: #e3b341; } .cc-reroll.roll .bar i { width: 35% !important; background: #e3b341; animation: cc-slide 1.1s ease-in-out infinite alternate; }' +
+    '.cc-reroll.done-ok { border-color: #3fb950; } .cc-reroll.done-bad { border-color: #8b95a3; }' +
+    '.cc-reroll.count .t { animation: cc-pulse 1s ease-in-out infinite; }' +
+    '@keyframes cc-slide { from { transform: translateX(0); } to { transform: translateX(185%); } }' +
+    '@keyframes cc-pulse { 50% { transform: scale(1.06); } }' +
+    '@media (prefers-reduced-motion: reduce) { .cc-reroll .t, .cc-reroll .bar i { animation: none !important; } }';
+  function banner(kind, title, sub, hideAfter, frac) {
+    if (typeof document === 'undefined') return;
+    clearTimeout(bannerHideT);
+    if (!cfg.rerollOverlay) { if (bannerEl) bannerEl.remove(); return; }
+    var host = document.querySelector('.s9x'); if (!host) return;
+    if (!document.getElementById('cc-reroll-css')) { var st = document.createElement('style'); st.id = 'cc-reroll-css'; st.textContent = BANNER_CSS; document.head.appendChild(st); }
+    if (!bannerEl) { bannerEl = document.createElement('div'); bannerEl.setAttribute('role', 'status'); bannerEl.innerHTML = '<div class="t"></div><div class="s"></div><div class="bar"><i></i></div>'; }
+    if (bannerEl.parentNode !== host) host.appendChild(bannerEl);
+    bannerEl.className = 'cc-reroll ' + kind;
+    bannerEl.style.opacity = '1';
+    bannerEl.querySelector('.t').textContent = title;
+    bannerEl.querySelector('.s').textContent = sub || '';
+    var bar = bannerEl.querySelector('.bar');
+    bar.hidden = !(kind === 'count' || kind === 'roll');
+    if (kind === 'count') bar.firstChild.style.width = Math.max(0, Math.min(1, frac || 0)) * 100 + '%';
+    if (hideAfter) bannerHideT = setTimeout(function () {
+      if (!bannerEl) return;
+      bannerEl.style.opacity = '0';
+      bannerHideT = setTimeout(function () { if (bannerEl) { bannerEl.remove(); bannerEl = null; } }, 550);
+    }, hideAfter);
   }
 
   // ── queue and timers ────────────────────────────────────────────────────
@@ -259,7 +341,7 @@
       feed(f.name + ' needs a randomizer ROM (not this one)', 'info'); render(); return;
     }
     if (f.secs) active[job.id] = (active[job.id] || 0) + Math.round(f.secs * (core.fps || 60.1));
-    else if (f.app) { try { f.app(); } catch (e) { console.warn('[crowd]', job.id, e); } }
+    else if (f.app) { try { f.app(job); } catch (e) { console.warn('[crowd]', job.id, e); } }
     else f.apply(ram);
     gap = GAP_FRAMES;
     feed((job.user ? job.user + ': ' : '') + (job.label ? job.label + ' → ' : '') + f.name + (f.secs ? ' (' + f.secs + 's)' : ''),
@@ -353,6 +435,7 @@
       '<div class="row"><span>Bridge address</span><input type="text" data-ext="cc-url" value="' + esc(cfg.url) + '" style="width:55%;max-width:240px"></div>' +
       '<div class="row"><span>Show feed on game</span><input type="checkbox" data-ext="cc-feed"' + (cfg.feed ? ' checked' : '') + '></div>' +
       '<div class="row"><span>Allow seed reroll (ends this game)</span><input type="checkbox" data-ext="cc-reroll"' + (cfg.allowReroll ? ' checked' : '') + '></div>' +
+      '<div class="row"><span>Show seed-reroll banner on game</span><input type="checkbox" data-ext="cc-reroll-overlay"' + (cfg.rerollOverlay ? ' checked' : '') + '></div>' +
       (rerollT ? '<div class="acts"><button type="button" class="primary" data-ext="cc-cancel-reroll">Cancel new seed (' + rerollLeft + 's)</button></div>' : '') +
       '<p class="hint">Status: ' + esc(status) + (bridgeInfo ? ' · ' + esc(bridgeInfo) : '') +
         ' · ' + queue.length + ' queued' + (timed.length ? ' · active: ' + esc(timed.join(', ')) : '') + '</p>' +
@@ -372,6 +455,7 @@
     var a = el.dataset.ext;
     if (a === 'cc-enabled') { cfg.enabled = el.checked; saveCfg(); connect(); }
     else if (a === 'cc-feed') { cfg.feed = el.checked; saveCfg(); }
+    else if (a === 'cc-reroll-overlay') { cfg.rerollOverlay = el.checked; saveCfg(); if (!el.checked && bannerEl) { bannerEl.remove(); bannerEl = null; } }
     else if (a === 'cc-reroll') { cfg.allowReroll = el.checked; saveCfg(); if (!el.checked) cancelReroll(); rerender && rerender(); }
     else if (a === 'cc-url') {
       cfg.url = el.value.trim(); saveCfg();

@@ -61,8 +61,10 @@ reloads by itself when you save it.
 | `seed_roll` | **New seed** with the current Randomizer settings — ends the current game |
 
 `seed_roll` is off until you check **Allow seed reroll** in ⋯ menu → Crowd
-effects. When it fires, the feed counts down 10 seconds, and a **Cancel new
-seed** button appears in that menu. If a roll can't happen (no favourites
+effects. When it fires, a banner on the game shows who sent it and counts
+down 10 seconds, then shows the seed being made and the result (with the
+seed's code). A **Cancel new seed** button appears in that menu during the
+countdown. The banner can be turned off there too. If a roll can't happen (no favourites
 yet, no packs), the feed says so instead of popping up a dialog.
 
 Timed effects count only time spent in play and stack (a second gift adds
