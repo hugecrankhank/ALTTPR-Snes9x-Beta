@@ -1,0 +1,138 @@
+ALTTPR SNES9X - TIKTOK CROWD CONTROL SETUP
+==========================================
+
+Your TikTok LIVE viewers send gifts, likes, follows and shares, and those
+change your game: hearts, rupees, bombs, inverted controls, ice physics,
+cucco attacks, even a brand-new seed. Everything runs on the PC you
+stream from.
+
+How it fits together:
+
+  TikTok LIVE --> TikFinity --> this bridge --> the game in your browser
+
+
+WHAT YOU NEED
+-------------
+- A Windows PC (Mac/Linux work too, see the end).
+- Node.js 20 or newer: https://nodejs.org  (the "LTS" download is fine)
+- TikFinity (free): https://tikfinity.zerody.one
+- The game: https://hugecrankhank.github.io/ALTTPR-Snes9x-Beta/
+- This folder, unzipped somewhere easy, like your Desktop.
+
+
+ONE-TIME SETUP
+--------------
+1. Install Node.js. Click Next through the installer, defaults are fine.
+
+2. Install TikFinity, open it, and log in with your TikTok account.
+   Its WebSocket / Events API port should be 21213 (that's its default).
+
+3. Open the game in your browser on the same PC, load your ROM, then:
+   ... menu  ->  Crowd effects
+   - Turn on "TikTok effects on"
+   - Bridge address must be:  ws://localhost:21214
+   - If the browser asks to allow access to devices on your local
+     network, click Allow.
+
+
+EVERY TIME YOU STREAM
+---------------------
+1. Open TikFinity (logged in).
+2. Double-click start-bridge.bat in this folder.
+   A black window opens. You should see:
+     bridge listening on ws://localhost:21214
+     connected to TikFinity on port 21213
+   Leave this window open while you stream.
+3. Open the game. The window should add:  game connected (1 open)
+4. Go live on TikTok. Gifts show up in the black window and on the game.
+
+
+TEST BEFORE GOING LIVE
+----------------------
+In the game: ... menu -> Crowd effects has a test button for every effect.
+Press one, close the menu, and it happens in-game.
+
+"New seed!" only works after you tick "Allow seed reroll" in that menu.
+It ends your current game: a banner counts down 10 seconds (with a Cancel
+button in the menu), then makes and loads a new seed.
+
+
+CHOOSING WHICH GIFT DOES WHAT
+-----------------------------
+Open mapping.json in Notepad. The "gifts" list is:  "Gift name": "effect"
+
+  "Rose": "heal_1",
+  "Rosa": "ice",
+  "Cap": "cucco_storm",
+
+Save the file and it reloads by itself, no restart needed.
+Every gift that arrives is printed in the black window with its exact
+name, even ones you haven't mapped, so you can copy names from there.
+Spelling and capital letters of effect names are forgiven a little, but
+the bridge window tells you if something doesn't match.
+
+Effects (use these names on the right side):
+
+  heal_full      Full heal
+  heal_1         +1 heart
+  hurt_2         -2 hearts (never kills)
+  hp_1           Down to 1 heart
+  magic_full     Refill magic
+  magic_drain    Drain magic
+  rupees_plus    +50 rupees
+  rupees_minus   -50 rupees
+  bombs_plus     +10 bombs
+  bombs_none     Lose all bombs
+  arrows_plus    +10 arrows
+  arrows_none    Lose all arrows
+
+  Timed (more gifts add more time):
+  invert         Inverted D-pad, 20s
+  no_sword       No sword, 20s
+  no_item        No Y item, 20s
+  swap_by        B and Y swapped, 20s
+  one_hit        One-heart mode, 30s
+  no_magic       Magic locked, 30s
+  ice            Ice physics (slippery floors), 20s
+  cucco_storm    Cucco attack, 30s of outdoor time
+                 (pauses indoors, picks up again outside)
+
+  App actions:
+  sprite_roll    Random Link sprite
+  sprite_fav     Random sprite from your starred favourites
+  msu_roll       Random MSU-1 music pack from your starred packs
+  seed_roll      NEW SEED (needs "Allow seed reroll" ticked)
+
+Other settings in mapping.json:
+  "likes": { "every": 300, "effect": "heal_1" }   one effect per 300 likes
+  "follow" / "share"     effect for a follow / share (once per viewer
+                         per 10 minutes)
+  "maxPerGift": 5        cap for gift streaks (20 Roses = 5 heals)
+
+
+TROUBLESHOOTING
+---------------
+- "can't reach TikFinity on port 21213"
+    TikFinity isn't open, isn't logged in, or its port isn't 21213.
+
+- The game says "TikFinity, not the bridge: use ws://localhost:21214"
+    The game's Bridge address is 21213. Change it to 21214.
+
+- Game status stays "waiting for bridge"
+    The black window isn't open, or the address isn't ws://localhost:21214.
+    Allow local network access if the browser asked.
+
+- "Node.js is not installed"
+    Install it from nodejs.org, then close and reopen the folder.
+
+- A gift shows "not mapped"
+    Add its exact name to "gifts" in mapping.json.
+
+- An effect says it "needs a randomizer ROM"
+    Ice physics and Cucco attack use features built into randomizer seeds.
+    Generate a seed in the game's Randomizer panel.
+
+- Cucco attack seems to do nothing
+    It only happens outdoors. Indoors its timer pauses.
+
+Mac / Linux: open a terminal in this folder and run:  node bridge.mjs

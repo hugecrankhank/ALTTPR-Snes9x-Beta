@@ -1,10 +1,6 @@
 {
-  "username": "your_tiktok_username",
   "source": "tikfinity",
-  "signServer": "tiktools",
-  "signApiKey": "",
   "maxPerGift": 5,
-
   "gifts": {
     "Rose": "heal_1",
     "TikTok": "rupees_plus",
@@ -20,12 +16,12 @@
     "Corgi": "heal_full",
     "Sunglasses": "sprite_roll",
     "Mishka Bear": "msu_roll",
-    "Lion": "seed_roll"
+    "Lion": "seed_roll",
+    "Rosa": "ice",
+    "Cap": "cucco_storm"
   },
-
   "likes": { "every": 300, "effect": "heal_1" },
   "follow": "rupees_plus",
   "share": "bombs_plus",
-
   "allowedOrigins": ["https://hugecrankhank.github.io", "http://localhost", "http://127.0.0.1"]
 }

@@ -19,7 +19,8 @@ TikTok LIVE ──► TikFinity ──ws://localhost:21213──► bridge.mjs �
 1. Install Node.js 20 or newer, and **TikFinity** (free, https://tikfinity.zerody.one).
 2. Open TikFinity, log in with your TikTok account, and leave it running. Its
    Events API / WebSocket port should be 21213 (the default).
-3. In `crowd/bridge`: `npm install`, then `npm start`.
+3. In `crowd/bridge`: double-click `start-bridge.bat` (or run `node bridge.mjs`).
+   No `npm install` is needed in TikFinity mode. Full steps: `bridge/INSTRUCTIONS.txt`.
    (Windows PowerShell: use `npm.cmd install` / `npm.cmd start` if `npm` is blocked.)
    It should print *connected to TikFinity*.
 4. In the game on the **same PC**: ⋯ menu → **Crowd effects** → turn on, with
