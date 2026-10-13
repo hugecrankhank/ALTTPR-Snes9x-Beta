@@ -119,8 +119,13 @@ function onGameMessage(text) {
   let m; try { m = JSON.parse(text); } catch { return; }
   if (m.type === 'hello') {
     knownEffects = new Set((m.effects || []).map((e) => e.id));
-    const bad = Object.values(cfg.gifts).concat(cfg.follow, cfg.share, cfg.likes?.effect).filter((id) => id && !knownEffects.has(id));
-    if (bad.length) log('mapping.json names effects the game does not have: ' + [...new Set(bad)].join(', '));
+    const named = [...new Set(Object.values(cfg.gifts).concat(cfg.follow, cfg.share, cfg.likes?.effect).filter(Boolean))];
+    for (const id of named) {
+      if (knownEffects.has(id)) continue;
+      const fix = resolveEffect(id);
+      log(fix ? `mapping.json: "${id}" isn't an effect name, using "${fix}" (fix the spelling to silence this)`
+              : `mapping.json: "${id}" isn't an effect the game has. Type "list" in --test mode to see them all.`);
+    }
   } else if (m.type === 'applied') {
     log(`  ✓ applied ${m.effect}${m.user ? ' for ' + m.user : ''}`);
   }
@@ -129,9 +134,32 @@ function onGameMessage(text) {
 // ── turning TikTok events into effects ─────────────────────────────────────
 const cooldown = new Map();   // user → last time, for follows/shares (spam guard)
 
+// Forgive capital letters and small typos in mapping.json ("bombs_None",
+// "cucoo_storm"): pick the one effect within 2 letters of what was written.
+function editDistance(a, b) {
+  const d = Array.from({ length: a.length + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= b.length; j++) d[0][j] = j;
+  for (let i = 1; i <= a.length; i++) for (let j = 1; j <= b.length; j++)
+    d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[a.length][b.length];
+}
+function resolveEffect(id) {
+  if (!knownEffects || knownEffects.has(id)) return id;
+  const want = String(id).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  if (knownEffects.has(want)) return want;
+  let best = null, bestD = 3, tie = false;
+  for (const k of knownEffects) {
+    const dist = editDistance(want, k);
+    if (dist < bestD) { best = k; bestD = dist; tie = false; } else if (dist === bestD) tie = true;
+  }
+  return best && !tie ? best : null;
+}
+
 function fire(effect, user, label, count = 1) {
   if (!effect) return;
-  if (knownEffects && !knownEffects.has(effect)) { log(`  ! unknown effect "${effect}" (check mapping.json)`); return; }
+  const resolved = resolveEffect(effect);
+  if (!resolved) { log(`  ! unknown effect "${effect}" (check mapping.json)`); return; }
+  effect = resolved;
   if (!clients.size) { log(`  (no game connected, dropped ${effect})`); return; }
   broadcast({ type: 'effect', effect, user, label, count: Math.min(count, cfg.maxPerGift ?? 5) });
   log(`  → ${effect} x${count} ${user ? 'from ' + user : ''} ${label ? '(' + label + ')' : ''}`);
