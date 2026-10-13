@@ -189,6 +189,7 @@
   // ── queue and timers ────────────────────────────────────────────────────
   var queue = [];              // { id, user, label }
   var active = {};             // id -> frames left
+  var paused = {};             // outdoor-only effects waiting indoors
   var gap = 0;                 // frames until the next queued effect may run
   var GAP_FRAMES = 45;         // ~0.75 s between effects, so each one is seen
   var MAX_QUEUE = 60;
@@ -236,10 +237,19 @@
     holdSwitches(core, ram);
     if (!inPlay(ram)) return;
     // timed effects
+    var outside = ram[A.MODE] === 0x09;   // the ROM only spawns cuccos on the overworld
     for (var id in active) {
       var fx = EFFECTS[id];
       if (fx.frame) fx.frame(ram);
-      if (--active[id] <= 0) { delete active[id]; feed(fx.name + ' ended', 'end'); render(); }
+      if (fx.outdoors) {
+        // Outdoor-only effects pause their clock indoors and pick up again outside.
+        if (!outside) {
+          if (!paused[id]) { paused[id] = true; feed(fx.name + ' paused indoors (' + Math.ceil(active[id] / 60) + 's left)', 'info'); render(); }
+          continue;
+        }
+        if (paused[id]) { delete paused[id]; feed(fx.name + ' resumed', 'bad'); render(); }
+      }
+      if (--active[id] <= 0) { delete active[id]; delete paused[id]; feed(fx.name + ' ended', 'end'); render(); }
     }
     if (gap > 0) { gap--; return; }
     var job = queue.shift();
@@ -248,7 +258,6 @@
     if (f.romCheck && !romHas(core, f.romCheck)) {
       feed(f.name + ' needs a randomizer ROM (not this one)', 'info'); render(); return;
     }
-    if (f.outdoors && ram[0x1B]) feed(f.name + ' only shows up outdoors', 'info');
     if (f.secs) active[job.id] = (active[job.id] || 0) + Math.round(f.secs * (core.fps || 60.1));
     else if (f.app) { try { f.app(); } catch (e) { console.warn('[crowd]', job.id, e); } }
     else f.apply(ram);
@@ -335,7 +344,7 @@
   function esc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'); }
   function menuHtml(rr) {
     if (rr) rerender = rr;
-    var timed = Object.keys(active).map(function (id) { return EFFECTS[id].name + ' ' + Math.ceil(active[id] / 60) + 's'; });
+    var timed = Object.keys(active).map(function (id) { return EFFECTS[id].name + ' ' + Math.ceil(active[id] / 60) + 's' + (paused[id] ? ' (paused indoors)' : ''); });
     var tests = Object.keys(EFFECTS).map(function (id) {
       return '<button type="button" data-ext="cc-test" data-id="' + id + '">' + esc(EFFECTS[id].name) + '</button>';
     }).join('');
@@ -355,7 +364,7 @@
     rerender = rr;
     var a = b.dataset.ext;
     if (a === 'cc-test') trigger(b.dataset.id, 'test');
-    else if (a === 'cc-clear') { queue.length = 0; active = {}; cancelReroll(); }
+    else if (a === 'cc-clear') { queue.length = 0; active = {}; paused = {}; cancelReroll(); }
     else if (a === 'cc-cancel-reroll') cancelReroll();
     rr();
   }
