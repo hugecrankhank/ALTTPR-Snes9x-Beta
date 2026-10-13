@@ -47,6 +47,31 @@ EVERY TIME YOU STREAM
 4. Go live on TikTok. Gifts show up in the black window and on the game.
 
 
+SCROLLING GIFT LIST FOR YOUR STREAM
+-----------------------------------
+While the bridge is running it serves a scrolling banner of every gift
+and what it does, with gift pictures:
+
+    http://localhost:21214/ticker
+
+Add it to your stream as a browser source:
+  - OBS: Sources -> + -> Browser. URL as above, Width 1920, Height 72.
+  - TikTok LIVE Studio: add a "Link" source with the same URL.
+Drag/crop it to a strip along the top or bottom of the screen.
+
+It updates by itself when you change mapping.json.
+Optional extras on the URL:
+    ?height=90       taller or shorter bar (default 72)
+    ?bg=0            no background, just the scrolling items
+    ?speed=100       scroll speed (default 70)
+    e.g. http://localhost:21214/ticker?height=90&speed=100
+
+Gift pictures come from the "icons" folder: a picture named exactly like
+the gift (Rose.png, Galaxy.png...) is shown next to it. Add your own the
+same way. In mapping.json, "ticker" sets the title, speed, and nicer names
+for effects ("labels").
+
+
 TEST BEFORE GOING LIVE
 ----------------------
 In the game: ... menu -> Crowd effects has a test button for every effect.
@@ -62,8 +87,8 @@ CHOOSING WHICH GIFT DOES WHAT
 Open mapping.json in Notepad. The "gifts" list is:  "Gift name": "effect"
 
   "Rose": "heal_1",
-  "Rosa": "ice",
-  "Cap": "cucco_storm",
+  "Scooter": "ice",
+  "Doughnut": "cucco_storm",
 
 Save the file and it reloads by itself, no restart needed.
 Every gift that arrives is printed in the black window with its exact
@@ -85,6 +110,9 @@ Effects (use these names on the right side):
   bombs_none     Lose all bombs
   arrows_plus    +10 arrows
   arrows_none    Lose all arrows
+  enemy_spawn    Extra enemy: a copy of an enemy already in the room
+                 appears next to it (nothing happens if no enemies are
+                 around)
 
   Timed (more gifts add more time):
   invert         Inverted D-pad, 20s
@@ -104,6 +132,8 @@ Effects (use these names on the right side):
   seed_roll      NEW SEED (needs "Allow seed reroll" ticked)
 
 Other settings in mapping.json:
+  "durations": { "one_hit": 20 }   change how long timed effects last
+                                   (seconds)
   "likes": { "every": 300, "effect": "heal_1" }   one effect per 300 likes
   "follow" / "share"     effect for a follow / share (once per viewer
                          per 10 minutes)
@@ -127,6 +157,9 @@ TROUBLESHOOTING
 
 - A gift shows "not mapped"
     Add its exact name to "gifts" in mapping.json.
+
+- The ticker in OBS is blank or says "Waiting for the bridge"
+    Start the bridge first (start-bridge.bat), then refresh the source.
 
 - An effect says it "needs a randomizer ROM"
     Ice physics and Cucco attack use features built into randomizer seeds.

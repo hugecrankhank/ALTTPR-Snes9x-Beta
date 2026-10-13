@@ -59,6 +59,49 @@
     return pad;
   }
 
+  // ── extra enemy: copy an enemy that's already in the room ───────────────
+  // A sprite only draws right if its graphics are loaded for this area, and
+  // only the enemies already here are guaranteed to be. So the new enemy is a
+  // full copy of one of them (every per-sprite table, offsets from the
+  // zelda3 reverse engineering), put into a free slot next to the original.
+  var SLOT_TABLES = [0xB58, 0xB6B, 0xB89, 0xBA0, 0xBB0, 0xBE0, 0xC9A, 0xCAA, 0xCBA, 0xCD2, 0xCE2,
+    0xD00, 0xD10, 0xD20, 0xD30, 0xD40, 0xD50, 0xD60, 0xD70, 0xD80, 0xD90, 0xDA0, 0xDB0, 0xDC0, 0xDD0, 0xDE0, 0xDF0,
+    0xE00, 0xE10, 0xE20, 0xE30, 0xE40, 0xE50, 0xE60, 0xE70, 0xE80, 0xE90, 0xEA0, 0xEB0, 0xEC0, 0xED0, 0xEE0, 0xEF0,
+    0xF00, 0xF10, 0xF20, 0xF30, 0xF40, 0xF50, 0xF60, 0xF70, 0xF80, 0xF90,
+    0x1F9C2, 0x1FA1C, 0x1FA2C, 0x1FA3C, 0x1FA4C];
+  var S = { STATE: 0xDD0, TYPE: 0xE20, N: 0xBC0, XL: 0xD10, XH: 0xD30, YL: 0xD00, YH: 0xD20, FLOOR: 0xF20, HIT: 0xEF0 };
+  // Ordinary enemies only: no bosses, NPCs, items, switches, traps, or
+  // anything that grabs Link (Wallmaster) or is part of a bigger enemy.
+  var CLONEABLE = {};
+  [0x08, 0x0A, 0x0D, 0x0E, 0x0F, 0x11, 0x12, 0x13, 0x18, 0x19, 0x20, 0x22, 0x23, 0x24, 0x26, 0x27,
+   0x41, 0x42, 0x43, 0x45, 0x46, 0x47, 0x48, 0x49, 0x4A, 0x4B, 0x4C, 0x4D, 0x4E, 0x4F, 0x58,
+   0x6A, 0x6B, 0x6D, 0x6E, 0x6F, 0x71, 0x7C, 0x81, 0x83, 0x84, 0x85, 0x86, 0x8B, 0x8E, 0x8F, 0x91,
+   0x94, 0x99, 0x9A, 0x9B, 0x9C, 0x9D, 0xA1, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xC3, 0xC4, 0xC7,
+   0xC9, 0xCF, 0xD0, 0xD3].forEach(function (t) { CLONEABLE[t] = 1; });
+  function sx(r, k) { return r[S.XL + k] | (r[S.XH + k] << 8); }
+  function sy(r, k) { return r[S.YL + k] | (r[S.YH + k] << 8); }
+  function cloneEnemy(r) {
+    var lx = r[0x22] | (r[0x23] << 8), ly = r[0x20] | (r[0x21] << 8);
+    var src = [], free = -1;
+    for (var k = 0; k < 16; k++) {
+      var st = r[S.STATE + k];
+      if (st === 0) { if (free < 0 || k > free) free = k; continue; }
+      if (st === 9 && CLONEABLE[r[S.TYPE + k]] && r[S.FLOOR + k] === r[0xEE] &&
+          Math.abs(sx(r, k) - lx) < 0x140 && Math.abs(sy(r, k) - ly) < 0x120) src.push(k);
+    }
+    if (!src.length) return 'No enemies here to copy';
+    if (free < 0) return 'Too many sprites on screen';
+    var from = src[Math.floor(Math.random() * src.length)];
+    for (var i = 0; i < SLOT_TABLES.length; i++) r[SLOT_TABLES[i] + free] = r[SLOT_TABLES[i] + from];
+    r[S.N + free] = 0xFF;                 // not from the room's list: killing it marks nothing
+    r[S.HIT + free] = 0;
+    // next to the original, nudged toward Link so it joins the fight
+    var x = sx(r, from) + (lx > sx(r, from) ? 12 : -12), y = sy(r, from) + (ly > sy(r, from) ? 12 : -12);
+    r[S.XL + free] = x & 0xFF; r[S.XH + free] = (x >> 8) & 0xFF;
+    r[S.YL + free] = y & 0xFF; r[S.YH + free] = (y >> 8) & 0xFF;
+    return true;
+  }
+
   // ── the effects ─────────────────────────────────────────────────────────
   // Instant effects run once (apply). Timed ones last `secs` seconds of play
   // (the clock stops in menus and text boxes); a second gift adds more time.
@@ -98,6 +141,9 @@
       input: function (p) { return p & ~B.Y; } },
     swap_by:     { name: 'B and Y swapped', good: false, secs: 20,
       input: function (p) { return swapBits(p, B.B, B.Y); } },
+    enemy_spawn: { name: 'Extra enemy', good: false,
+      apply: function (r) { return cloneEnemy(r); } },
+
     // These two flip switches the randomizer ROM itself keeps for crowd
     // control (z3randomizer: IceModifier $7F50C7, CuccoStormer $7F50C5).
     // `hold` sets the switch while the effect runs and clears it otherwise,
@@ -276,6 +322,14 @@
   var GAP_FRAMES = 45;         // ~0.75 s between effects, so each one is seen
   var MAX_QUEUE = 60;
 
+  // mapping.json can change how long timed effects last ("durations").
+  var durations = {};
+  function secsOf(id) {
+    var f = EFFECTS[id]; if (!f || !f.secs) return 0;
+    var d = +durations[id];
+    return d > 0 && d <= 600 ? d : f.secs;
+  }
+
   function trigger(id, user, label) {
     var fx = EFFECTS[id];
     if (!fx) { console.warn('[crowd] unknown effect', id); return false; }
@@ -340,11 +394,15 @@
     if (f.romCheck && !romHas(core, f.romCheck)) {
       feed(f.name + ' needs a randomizer ROM (not this one)', 'info'); render(); return;
     }
-    if (f.secs) active[job.id] = (active[job.id] || 0) + Math.round(f.secs * (core.fps || 60.1));
+    var secs = secsOf(job.id);
+    if (secs) active[job.id] = (active[job.id] || 0) + Math.round(secs * (core.fps || 60.1));
     else if (f.app) { try { f.app(job); } catch (e) { console.warn('[crowd]', job.id, e); } }
-    else f.apply(ram);
+    else {
+      var res = f.apply(ram);
+      if (typeof res === 'string') { feed(f.name + ': ' + res, 'info'); render(); return; }
+    }
     gap = GAP_FRAMES;
-    feed((job.user ? job.user + ': ' : '') + (job.label ? job.label + ' → ' : '') + f.name + (f.secs ? ' (' + f.secs + 's)' : ''),
+    feed((job.user ? job.user + ': ' : '') + (job.label ? job.label + ' → ' : '') + f.name + (secs ? ' (' + secs + 's)' : ''),
       f.good ? 'good' : 'bad');
     send({ type: 'applied', effect: job.id, user: job.user });
     render();
@@ -402,6 +460,9 @@
       if (m.type === 'effect') {
         var n = Math.max(1, Math.min(10, m.count | 0 || 1));
         for (var i = 0; i < n; i++) trigger(m.effect, m.user, m.label);
+      } else if (m.type === 'durations') {
+        durations = m.secs && typeof m.secs === 'object' ? m.secs : {};
+        render();
       } else if (m.type === 'status') {
         bridgeInfo = m.text || ''; render();
         if (m.text) feed(m.text, 'info');
@@ -474,7 +535,7 @@
 
   function list() {
     return Object.keys(EFFECTS).map(function (id) {
-      return { id: id, name: EFFECTS[id].name, secs: EFFECTS[id].secs || 0, good: !!EFFECTS[id].good };
+      return { id: id, name: EFFECTS[id].name, secs: secsOf(id), good: !!EFFECTS[id].good };
     });
   }
 

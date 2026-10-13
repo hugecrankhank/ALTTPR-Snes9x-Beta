@@ -50,6 +50,7 @@ reloads by itself when you save it.
 | `magic_full` / `magic_drain` | Refill / drain magic | | `one_hit` | One-heart mode, 30 s |
 | `rupees_plus` / `rupees_minus` | ±50 rupees | | `no_magic` | Magic locked, 30 s |
 | `bombs_plus` / `bombs_none` | +10 / lose all bombs | | `ice` | Ice physics (slippery floors everywhere), 20 s |
+| `enemy_spawn` | Extra enemy (copies one already in the room) | | | |
 | `arrows_plus` / `arrows_none` | +10 / lose all arrows | | `cucco_storm` | Cucco attack: angry cuccos fly at Link, 30 s of outdoor time (the clock pauses indoors) |
 
 **App rolls** (use the app's own buttons):
@@ -73,11 +74,20 @@ time). `ice` and `cucco_storm` switch on features built into the randomizer
 ROM itself; on a ROM without them the feed says so and nothing happens. They only filter buttons or hold a value each frame, so save states,
 resets and reloads can't leave the game stuck changed.
 
+## Scrolling gift list (OBS)
+
+While the bridge runs, `http://localhost:21214/ticker` is a scrolling bar of
+every mapped gift and its effect, for an OBS browser source or a TikTok LIVE
+Studio link source. `?height=`, `?speed=` and `?bg=0` adjust it. Gift
+pictures come from `bridge/icons/<Gift name>.png`.
+
 ## mapping.json
 
 - `gifts`: gift name (any case) or gift id → effect id.
 - `likes`: `{ "every": 300, "effect": "heal_1" }` fires once per 300 likes.
 - `follow`, `share`: effect id; once per viewer per 10 minutes.
+- `durations`: seconds for timed effects, e.g. `{ "one_hit": 20 }`.
+- `ticker`: `title`, `speed`, and `labels` (nicer effect names) for the gift list.
 - `maxPerGift`: cap for a gift streak (e.g. 20 Roses still gives 5 heals).
 - `source`: `"tikfinity"` (default) or `"direct"`. Direct mode connects to
   TikTok without TikFinity, using `tiktok-live-connector` and needs `username`,

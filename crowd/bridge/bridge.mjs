@@ -51,7 +51,7 @@ function loadConfig() {
 }
 // Edit mapping.json while it runs: changes apply right away.
 fs.watchFile(cfgPath, { interval: 1000 }, () => {
-  try { cfg = loadConfig(); log('mapping.json reloaded'); } catch (e) { log('mapping.json has an error, kept the old one: ' + e.message); }
+  try { cfg = loadConfig(); log('mapping.json reloaded'); sendDurations(); } catch (e) { log('mapping.json has an error, kept the old one: ' + e.message); }
 });
 
 function log(...m) { console.log(new Date().toLocaleTimeString(), ...m); }
@@ -61,8 +61,20 @@ const clients = new Set();
 let knownEffects = null;   // ids the game reported in its hello
 
 const server = http.createServer((req, res) => {
+  const url = new URL(req.url, 'http://localhost');
+  if (url.pathname === '/ticker') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(TICKER_HTML); return; }
+  if (url.pathname === '/ticker.json') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(tickerData())); return; }
+  if (url.pathname.startsWith('/icons/')) {
+    const name = path.basename(decodeURIComponent(url.pathname.slice(7)));
+    const file = path.join(HERE, 'icons', name);
+    if (/\.(png|gif|webp|jpe?g)$/i.test(name) && fs.existsSync(file)) {
+      res.writeHead(200, { 'content-type': 'image/' + name.split('.').pop().toLowerCase().replace('jpg', 'jpeg'), 'cache-control': 'max-age=60' });
+      fs.createReadStream(file).pipe(res); return;
+    }
+    res.writeHead(404); res.end(); return;
+  }
   res.writeHead(200, { 'content-type': 'text/plain' });
-  res.end(`ALTTPR crowd bridge. Game pages connected: ${clients.size}\n`);
+  res.end(`ALTTPR crowd bridge. Game pages connected: ${clients.size}\nScrolling gift list for OBS: http://localhost:${cfg.port}/ticker\n`);
 });
 
 server.on('upgrade', (req, socket) => {
@@ -119,6 +131,8 @@ function onGameMessage(text) {
   let m; try { m = JSON.parse(text); } catch { return; }
   if (m.type === 'hello') {
     knownEffects = new Set((m.effects || []).map((e) => e.id));
+    for (const e of m.effects || []) if (e.name) effectNames[e.id] = e.name;
+    sendDurations();
     const named = [...new Set(Object.values(cfg.gifts).concat(cfg.follow, cfg.share, cfg.likes?.effect).filter(Boolean))];
     for (const id of named) {
       if (knownEffects.has(id)) continue;
@@ -185,6 +199,100 @@ function onSocial(kind, user) {
   log(`${kind}: ${user}`);
   fire(effect, user, kind === 'follow' ? 'Followed' : 'Shared');
 }
+
+// ── durations and the scrolling gift list ──────────────────────────────────
+// "durations" in mapping.json changes how long timed effects last; the game
+// is told whenever it connects or the file is saved.
+function sendDurations() { broadcast({ type: 'durations', secs: cfg.durations || {} }); }
+
+// Effect names for the gift list (the game sends its own names when it connects).
+const effectNames = {
+  heal_full: 'Full heal', heal_1: '+1 heart', hurt_2: '-2 hearts', hp_1: 'Down to 1 heart',
+  magic_full: 'Refill magic', magic_drain: 'Drain magic', rupees_plus: '+50 rupees', rupees_minus: '-50 rupees',
+  bombs_plus: '+10 bombs', bombs_none: 'Lose all bombs', arrows_plus: '+10 arrows', arrows_none: 'Lose all arrows',
+  enemy_spawn: 'Extra enemy', ice: 'Ice physics', cucco_storm: 'Cucco attack', invert: 'Inverted D-pad',
+  no_sword: 'No sword', no_item: 'No Y item', swap_by: 'B and Y swapped', one_hit: 'One-heart mode',
+  no_magic: 'Magic locked', sprite_roll: 'Random sprite', sprite_fav: 'Random favourite sprite',
+  msu_roll: 'Random MSU pack', seed_roll: 'New seed!',
+};
+const defaultSecs = { ice: 20, cucco_storm: 30, invert: 20, no_sword: 20, no_item: 20, swap_by: 20, one_hit: 30, no_magic: 30 };
+
+function tickerData() {
+  const t = cfg.ticker || {};
+  const labels = t.labels || {};
+  const icons = (() => { try { return fs.readdirSync(path.join(HERE, 'icons')); } catch { return []; } })();
+  const iconFor = (gift) => {
+    const want = gift.toLowerCase();
+    return icons.find((f) => f.replace(/\.[^.]+$/, '').toLowerCase() === want) || null;
+  };
+  const items = [];
+  for (const [gift, raw] of Object.entries(cfg.gifts || {})) {
+    const id = resolveEffect(raw) || raw;
+    const secs = id in defaultSecs ? (+(cfg.durations || {})[id] > 0 ? +cfg.durations[id] : defaultSecs[id]) : 0;
+    items.push({ gift, label: labels[id] || effectNames[id] || id, secs, icon: iconFor(gift) ? '/icons/' + encodeURIComponent(iconFor(gift)) : null });
+  }
+  if (t.showLikes !== false && cfg.likes?.effect && cfg.likes?.every)
+    items.push({ gift: `${cfg.likes.every} likes`, label: labels[cfg.likes.effect] || effectNames[cfg.likes.effect] || cfg.likes.effect, secs: 0, icon: null, emoji: '❤' });
+  for (const kind of ['follow', 'share']) if (t.showSocial !== false && cfg[kind])
+    items.push({ gift: kind === 'follow' ? 'Follow' : 'Share', label: labels[cfg[kind]] || effectNames[cfg[kind]] || cfg[kind], secs: 0, icon: null, emoji: kind === 'follow' ? '➕' : '↗' });
+  return { title: t.title ?? 'GIFT EFFECTS', speed: t.speed || 70, items };
+}
+
+const TICKER_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Gift effects</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  /* For OBS / TikTok LIVE Studio browser sources. ?height=80 sets the bar
+     height, ?bg=0 makes the bar background transparent, ?speed=90 overrides
+     the scroll speed (pixels per second). */
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  body { font: 700 calc(var(--h) * .36)/1 system-ui, "Segoe UI", sans-serif; color: #fff; --h: 72px; }
+  .bar { display: flex; align-items: center; height: var(--h); background: rgba(8,10,14,.88); border-top: 2px solid #e3b341; border-bottom: 2px solid #e3b341; box-sizing: border-box; }
+  .bar.clear { background: transparent; border-color: transparent; }
+  .title { flex: none; height: 100%; display: flex; align-items: center; padding: 0 .7em; background: #e3b341; color: #111; letter-spacing: .06em; font-size: .8em; z-index: 1; }
+  .view { flex: 1; overflow: hidden; height: 100%; }
+  .track { display: flex; width: max-content; height: 100%; align-items: center; will-change: transform; }
+  .item { display: flex; align-items: center; gap: .35em; padding: 0 1.1em; white-space: nowrap; text-shadow: 0 2px 3px #000; }
+  .item img { height: calc(var(--h) * .78); width: auto; }
+  .item .em { font-size: 1.3em; }
+  .item .eq { color: #e3b341; }
+  .item .secs { color: #9fb3c8; font-size: .75em; font-weight: 600; }
+  .dot { color: #e3b341; opacity: .6; }
+  .off { color: #9fb3c8; padding: 0 1em; font-size: .7em; }
+</style></head><body>
+<div class="bar" id="bar"><div class="title" id="title"></div><div class="view"><div class="track" id="track"></div></div></div>
+<script>
+const q = new URLSearchParams(location.search);
+if (q.get('height')) document.body.style.setProperty('--h', (+q.get('height') || 72) + 'px');
+if (q.get('bg') === '0') document.getElementById('bar').classList.add('clear');
+const track = document.getElementById('track'), titleEl = document.getElementById('title');
+let last = '', x = 0, speed = 70, half = 0, prev = performance.now();
+function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function build(d) {
+  speed = +q.get('speed') || d.speed || 70;
+  titleEl.textContent = d.title || ''; titleEl.style.display = d.title ? '' : 'none';
+  const one = d.items.map((i) => '<span class="item">' +
+    (i.icon ? '<img src="' + i.icon + '" alt="">' : '<span class="em">' + esc(i.emoji || '🎁') + '</span>') +
+    esc(i.gift) + ' <span class="eq">=</span> ' + esc(i.label) + (i.secs ? ' <span class="secs">' + i.secs + 's</span>' : '') +
+    '</span><span class="dot">◆</span>').join('');
+  // two copies side by side, so the loop is seamless
+  track.innerHTML = one + one;
+  requestAnimationFrame(() => { half = track.scrollWidth / 2; });
+}
+async function poll() {
+  try {
+    const r = await fetch('/ticker.json', { cache: 'no-store' });
+    const t = await r.text();
+    if (t !== last) { last = t; build(JSON.parse(t)); }
+  } catch (e) { if (!last) track.innerHTML = '<span class="off">Waiting for the bridge…</span>'; }
+  setTimeout(poll, 4000);
+}
+function step(now) {
+  const dt = Math.min(0.1, (now - prev) / 1000); prev = now;
+  if (half > 0) { x -= speed * dt; if (-x >= half) x += half; track.style.transform = 'translateX(' + x.toFixed(1) + 'px)'; }
+  requestAnimationFrame(step);
+}
+poll(); requestAnimationFrame(step);
+</script></body></html>`;
 
 // ── TikFinity source ───────────────────────────────────────────────────────
 // TikFinity (free desktop app) connects to your LIVE itself and re-sends every
@@ -365,6 +473,7 @@ function startTest() {
 
 server.listen(cfg.port, '127.0.0.1', () => {
   log(`bridge listening on ws://localhost:${cfg.port}`);
+  log(`scrolling gift list for OBS: http://localhost:${cfg.port}/ticker`);
   if (TEST) startTest();
   else if (cfg.source === 'tikfinity') startTikFinity();
   else if (cfg.source === 'direct') startTikTok();
