@@ -20,6 +20,16 @@ export const BUILTIN = [
     note: 'AVIANART preset jem041/onlyadkdf: open, crossed entrances, pot and enemy key drops, random weapons, 7/6 crystals. Turns on the tracker\'s OnlyADKD mode.',
   },
   {
+    id: 'casualboots', name: 'CasualBoots', gen: 'avianart',
+    avian: { preset: 'kaesden/casualboots', race: false }, onlyadkd: false,
+    note: 'AVIANART preset kaesden/casualboots, the one SahasrahBot rolls: Standard with a starting weapon, and you start with the Pegasus Boots.',
+  },
+  {
+    id: 'cabookey', name: 'Cabookey', gen: 'avianart',
+    avian: { preset: 'kaesden/cabookey', race: false }, onlyadkd: false,
+    note: 'AVIANART preset kaesden/cabookey, the one SahasrahBot rolls.',
+  },
+  {
     id: 'trueicerodhunt', name: 'True Ice Rod Hunt', gen: 'alttpr', api: TRUE_ICE_ROD_HUNT, onlyadkd: false,
     note: 'SahasrahBot preset trueicerodhunt (/alttpr preset preset:trueicerodhunt): you start with every item except the Ice Rod, '
       + 'and every chest is empty except one Ice Rod. Find it and beat Trinexx (Turtle Rock\'s boss holds the Triforce). Open, keysanity, 0/7 crystals.',

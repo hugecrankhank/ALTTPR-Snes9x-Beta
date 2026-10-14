@@ -27,6 +27,10 @@ export const DEFAULT_RELAY = 'https://avianart-relay.hugecrankhank.workers.dev';
 export const PRESETS = [
   { id: 'jem041/onlyadkdf', label: 'OnlyADKDF (jem041)', onlyadkd: true,
     note: 'Open, crossed entrances, pot and enemy key drops, random weapons, 7/6 crystals' },
+  // SahasrahBot rolls these two (its 2025 presets)
+  { id: 'kaesden/casualboots', label: 'Casual Boots (kaesden)', onlyadkd: false,
+    note: 'Standard with a starting weapon, but you start with the Pegasus Boots too' },
+  { id: 'kaesden/cabookey', label: 'Cabookey (kaesden)', onlyadkd: false, note: 'Kaesden\'s Cabookey' },
 ];
 
 // AVIANART's own preset list (api.php?action=presets), as of October 2026:
