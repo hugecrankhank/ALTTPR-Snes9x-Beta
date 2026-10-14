@@ -7,7 +7,7 @@
 // in this browser, in the store the Customizer's presets always used (an entry
 // with no `gen` is an alttpr.com one), and can be exported and imported.
 
-import { TRUE_ICE_ROD_HUNT } from './data/sahasrahbot-presets.js';
+import { TRUE_ICE_ROD_HUNT, ADKEYS } from './data/sahasrahbot-presets.js';
 
 const LS_PRESETS = 'unified-custom-presets';
 const LS_CURRENT = 'unified-custom-preset';
@@ -28,6 +28,11 @@ export const BUILTIN = [
     id: 'cabookey', name: 'Cabookey', gen: 'avianart',
     avian: { preset: 'kaesden/cabookey', race: false }, onlyadkd: false,
     note: 'AVIANART preset kaesden/cabookey, the one SahasrahBot rolls.',
+  },
+  {
+    id: 'adkeys', name: 'ADKeys', gen: 'alttpr', api: ADKEYS, onlyadkd: false,
+    note: 'SahasrahBot preset adkeys (All Dungeons Keysanity): open, every dungeon including Castle Tower is required, '
+      + 'all dungeon items shuffled anywhere, 7/7 crystals, random weapons. Customizer off.',
   },
   {
     id: 'trueicerodhunt', name: 'True Ice Rod Hunt', gen: 'alttpr', api: TRUE_ICE_ROD_HUNT, onlyadkd: false,
