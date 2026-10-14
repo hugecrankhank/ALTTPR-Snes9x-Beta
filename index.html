@@ -257,6 +257,22 @@
   body.phone #rando-bar label.f select { max-width: 100%; }
   body.phone #rando-bar .sprite-row { flex-wrap: wrap; }
   body.phone #rando-bar input#r-relay, body.phone #rando-bar input#r-avian-relay { width: 100%; max-width: 100%; }
+  /* ROM options: every control the same height, in one aligned row (one column on phones) */
+  #r-rom-more .rom-grid { align-items: flex-end; }
+  #r-rom-more .rom-grid > label.f select { height: 40px; min-width: 9em; }
+  #r-msu-field .sprite-row { flex-wrap: nowrap; }
+  #r-msu-field .filebtn, #r-msu-field button { height: 40px; display: inline-flex; align-items: center; }
+  #r-msu-pick { min-width: 11em; max-width: 18em; justify-content: center; }
+  #r-msu-pick span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+  #r-msu-pick.on { border-color: #2a8a4a; }
+  #r-msu-pick.on span { color: var(--accent); }
+  body.phone #r-rom-more .rom-grid > label.f, body.phone #r-msu-field { flex: 1 1 100%; }
+  body.phone #r-rom-more .rom-grid > label.f select { width: 100%; }
+  body.phone #r-msu-pick { flex: 1 1 auto; max-width: none; min-width: 0; }
+  #rando-bar details#r-rom-adv { flex-basis: 100%; }
+  #rando-bar details#r-rom-adv > summary { padding: 0; border: 0; background: none; font-size: 12px; font-weight: 400;
+    color: var(--dim); text-decoration: underline; text-underline-offset: 2px; }
+  #rando-bar details#r-rom-adv > summary::before { width: 5px; height: 5px; }
   body.phone #r-avian-panel label.f { flex: 1 1 100%; }
   /* buttons with a small line under their name (Load ROM, Base ROM) */
   .two-line { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
@@ -751,7 +767,7 @@
   </details>
   <details id="r-rom-more">
     <summary>ROM options</summary>
-    <div class="group">
+    <div class="group rom-grid">
       <label class="f">Heart beep
         <select id="r-heartbeep">
           <option value="normal">Normal</option>
@@ -759,6 +775,12 @@
           <option value="quarter">Quarter speed</option>
           <option value="double">Double speed</option>
           <option value="off">Off</option>
+        </select>
+      </label>
+      <label class="f">Item quickswap
+        <select id="r-quickswap">
+          <option value="off">Off</option>
+          <option value="on" selected>On</option>
         </select>
       </label>
       <label class="f vt-only">Menu speed
@@ -769,33 +791,30 @@
           <option value="instant">Instant</option>
         </select>
       </label>
-      <div class="f sprite-field">MSU-1 music
+      <div class="f stack-field" id="r-msu-field">MSU-1 music
         <div class="sprite-row">
-          <label class="filebtn" for="r-msu-input" title="Choose an MSU-1 pack: one .zip, or all its .pcm files">Choose pack…</label>
+          <label class="filebtn two-line" for="r-msu-input" id="r-msu-pick" title="Choose an MSU-1 pack: one .zip, or all its .pcm files"><span id="r-msu-pick-text">Choose pack…</span><small id="r-msu-name">.zip or .pcm files</small></label>
           <input type="file" id="r-msu-input" multiple>
           <label class="filebtn" for="r-msu-dir" id="r-msu-dir-label" hidden title="Choose the folder that holds the pack's .pcm files">Folder…</label>
           <input type="file" id="r-msu-dir" webkitdirectory>
-          <button id="r-msu-clear" hidden title="Use the game's own music again">Off</button>
+          <button id="r-msu-clear" type="button" hidden title="Use the game's own music again">Off</button>
         </div>
-        <span id="r-msu-name">MSU Off</span>
       </div>
-      <label class="f" title="Leave empty to use the built-in relay for alttpr.com seeds, or enter your own (see the README)">alttpr.com relay
-        <input type="url" id="r-relay" placeholder="https://….workers.dev" autocomplete="off" spellcheck="false">
-      </label>
-      <label class="f" title="Leave empty to use the built-in relay for AVIANART seeds, or enter your own (see the README)">AVIANART relay
-        <input type="url" id="r-avian-relay" placeholder="https://….workers.dev" autocomplete="off" spellcheck="false">
-      </label>
-      <label class="f">Item quickswap
-        <select id="r-quickswap">
-          <option value="off">Off</option>
-          <option value="on" selected>On</option>
-        </select>
-      </label>
-      <p class="hint">MSU-1: choose the pack as one <code>.zip</code>, or all the <code>.pcm</code> files of an ALttP
-        MSU-1 pack at once (on iPhone, tap <b>Select</b> in the file picker, then select them all), or on a computer
-        pick the pack's folder with <b>Folder…</b>. The pack plays instead of the game's music, right away in
-        the game you're playing (an older seed or Resume too) and on every seed after. Every pack you add is
-        kept in <b>♪</b> in the header: switch packs mid-game, star favourites (☆) and roll a random one (🎲).</p>
+      <p class="hint">MSU-1: pick the pack as one <code>.zip</code> or all its <code>.pcm</code> files (on iPhone, tap
+        <b>Select</b> in the file picker), or its folder with <b>Folder…</b> on a computer. It plays right away and on
+        every seed after. Your packs stay in <b>♪</b> in the header: switch, star (☆) or roll one (🎲) mid-game.</p>
+      <details id="r-rom-adv">
+        <summary>Advanced: seed relays</summary>
+        <div class="group">
+          <label class="f" title="Leave empty to use the built-in relay for alttpr.com seeds, or enter your own (see the README)">alttpr.com relay
+            <input type="url" id="r-relay" placeholder="https://….workers.dev" autocomplete="off" spellcheck="false">
+          </label>
+          <label class="f" title="Leave empty to use the built-in relay for AVIANART seeds, or enter your own (see the README)">AVIANART relay
+            <input type="url" id="r-avian-relay" placeholder="https://….workers.dev" autocomplete="off" spellcheck="false">
+          </label>
+          <p class="hint">Leave these empty to use the built-in relays. Only needed if you run your own (see the README).</p>
+        </div>
+      </details>
     </div>
   </details>
   <div class="actions">

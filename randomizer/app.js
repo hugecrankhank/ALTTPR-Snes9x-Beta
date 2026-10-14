@@ -709,7 +709,7 @@ async function playAlttprSeed(id) {
   } catch (e) {
     console.error(e);
     status(String(e.message || e), 'bad');
-    if (e.needsRelay) { const d = $('rando-bar').querySelector('details'); if (d) d.open = true; $('r-relay').focus(); }
+    if (e.needsRelay) { ['r-rom-more', 'r-rom-adv'].forEach((id) => { const d = $(id); if (d) d.open = true; }); $('r-relay').focus(); }
   } finally {
     btn.disabled = false;
   }
@@ -776,7 +776,7 @@ async function playAvian(hash, { preset = null, custom = null, race = false } = 
     else {
       console.error(e);
       status(String(e.message || e), 'bad');
-      if (e.needsRelay) { const d = $('rando-bar').querySelector('details#r-rom-more'); if (d) d.open = true; $('r-avian-relay').focus(); }
+      if (e.needsRelay) { ['r-rom-more', 'r-rom-adv'].forEach((id) => { const d = $(id); if (d) d.open = true; }); $('r-avian-relay').focus(); }
       if (!hash && /didn't roll/.test(String(e.message))) status(String(e.message) + ' Check the preset name.', 'bad');
     }
   } finally {
@@ -1151,7 +1151,11 @@ function askPackName(guess, title = 'Name this MSU-1 pack') {
 }
 
 function showMsu(name) {
-  $('r-msu-name').textContent = msu.count ? `${name} (${msu.count} tracks)` : 'MSU Off';
+  // the pick button shows the pack in use (or asks for one)
+  $('r-msu-pick-text').textContent = msu.count ? name : 'Choose pack…';
+  $('r-msu-name').textContent = msu.count ? `${msu.count} tracks · tap to change` : '.zip or .pcm files';
+  $('r-msu-pick').classList.toggle('on', !!msu.count);
+  $('r-msu-pick').title = msu.count ? `MSU-1 pack: ${name} (${msu.count} tracks). Tap to choose another.` : 'Choose an MSU-1 pack: one .zip, or all its .pcm files';
   $('r-msu-clear').hidden = !msu.count;
   updateMusicButton(name);
 }
