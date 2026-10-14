@@ -79,7 +79,8 @@ them, with the same code alttpr.com uses. Tap **?** beside a setting for what it
 
 **Saved presets** (the first field in the Randomizer bar) hold every generator's setups in one list. A
 preset knows which generator it's for (alttpr.com, Kara's branch or AVIANART), so picking one switches
-to that generator and sets it up; then press **Generate & Play**. **Built-in** presets come first
+to that generator and sets it up; then press **Generate & Play**. The list goes **★ Favorites** (tap **☆**
+beside the list to star the chosen preset, any kind), **Your presets**, **Built-in**, then each site's own. Built-in
 (**OnlyADKDF** rolls AVIANART's `jem041/onlyadkdf` and turns on the tracker's OnlyADKD mode). **Save**
 keeps the current generator and its settings (for alttpr.com, the bar's settings and every customizer
 menu) under a name; **Delete** removes one of yours. **Export** saves your presets to a file, **Import…**

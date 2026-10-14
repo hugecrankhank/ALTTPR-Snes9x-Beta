@@ -227,6 +227,8 @@
   #rando-bar .stack-field .sprite-row { flex-wrap: wrap; align-items: center; }
   #rando-bar .stack-field select { max-width: 100%; }
   #r-saved { min-width: 13em; }
+  #r-saved-fav { min-width: 34px; padding-left: 6px; padding-right: 6px; font-size: 16px; line-height: 1; }
+  #r-saved-fav.on { color: #f5c542; border-color: #8a6d1f; }
   #r-avian-tabs button { padding: 6px 12px; }
   #r-avian-tabs button.on { border-color: var(--accent); background: #12261a; color: var(--accent); }
   #r-avian-mode { padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--dim); font-size: 10px; margin-left: 4px; }
@@ -603,6 +605,7 @@
       <div class="sprite-row">
         <select id="r-saved" aria-label="Saved presets"></select>
         <button type="button" id="r-saved-save" title="Save the settings you have now (alttpr.com, Kara's branch or AVIANART) under a name of your own; it shows up in this list next time">&#65291; Save as preset</button>
+        <button type="button" id="r-saved-fav" aria-pressed="false" disabled title="Pick a preset, then star it to keep it at the top of the list">☆</button>
         <button type="button" id="r-saved-del" title="Delete the chosen preset" disabled>Delete</button>
       </div>
       <div class="sprite-row small-row">

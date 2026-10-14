@@ -39,28 +39,70 @@ const usable = (p) => p && typeof p === 'object' && (p.gen || p.custom);
 
 let hooks = null;   // { switchGen(gen), handlers: { gen: { snapshot, apply } }, status(msg, kind), fromSiteSave(json) }
 
+// ★ favourites: preset values (yours, built-in or a site's), shown first
+const LS_FAVS = 'unified-preset-favs';
+export const favs = () => { const f = lsGet(LS_FAVS, []); return Array.isArray(f) ? f : []; };
+function setFavs(list) { lsSet(LS_FAVS, list); }
+const favable = (v) => !!v && v !== 'av:?';
+
 export function paint() {
   const sel = $('r-saved');
   if (!sel) return;
   const cur = current();
-  const mine = Object.keys(own()).filter((n) => usable(own()[n])).sort((a, b) => a.localeCompare(b));
   const all = own();
-  sel.innerHTML = '<option value="">Choose a preset…</option>'
-    + '<optgroup label="Built-in">'
-    + BUILTIN.map((b) => `<option value="${BUILTIN_PREFIX}${esc(b.id)}" title="${esc(b.note || '')}">${esc(b.name)} · ${GEN_LABEL[b.gen]}</option>`).join('')
-    + '</optgroup>'
-    + (mine.length
-      ? '<optgroup label="Your presets">' + mine.map((n) => `<option value="${esc(n)}">${esc(n)} · ${GEN_LABEL[genOf(all[n])] || 'alttpr.com'}</option>`).join('') + '</optgroup>'
-      : '<optgroup label="Your presets"><option value="" disabled>None yet: set things up, then Save as preset</option></optgroup>')
+  const mine = Object.keys(all).filter((n) => usable(all[n])).sort((a, b) => a.localeCompare(b));
+  // every group as data first, so favourites can be lifted out of theirs
+  const groups = [
+    { label: 'Your presets', empty: 'None yet: set things up, then Save as preset',
+      options: mine.map((n) => ({ value: n, label: `${n} · ${GEN_LABEL[genOf(all[n])] || 'alttpr.com'}` })) },
+    { label: 'Built-in',
+      options: BUILTIN.map((b) => ({ value: BUILTIN_PREFIX + b.id, label: `${b.name} · ${GEN_LABEL[b.gen]}`, title: b.note || '' })) },
     // other sites' own presets (AVIANART's list), straight from their generator
-    + (hooks && hooks.extraGroups ? hooks.extraGroups() : []).map((g) => `<optgroup label="${esc(g.label)}">`
-      + g.options.map((o) => `<option value="${esc(o.value)}"${o.title ? ` title="${esc(o.title)}"` : ''}>${esc(o.label)}</option>`).join('')
-      + '</optgroup>').join('');
+    ...(hooks && hooks.extraGroups ? hooks.extraGroups() : []),
+  ];
+  const byValue = new Map();
+  // in Favorites a site's preset keeps its site's name ("Trinity · AVIANART")
+  groups.forEach((g) => g.options.forEach((o) => {
+    const site = / · /.test(g.label) ? g.label.split(' · ')[0] : '';
+    byValue.set(o.value, site && !o.label.includes(' · ') ? { ...o, label: `${o.label} · ${site}` } : o);
+  }));
+  const starred = favs().filter((v) => byValue.has(v));
+  const isFav = new Set(starred);
+  const opt = (o, star) => `<option value="${esc(o.value)}"${o.title ? ` title="${esc(o.title)}"` : ''}>${star ? '★ ' : ''}${esc(o.label)}</option>`;
+  sel.innerHTML = '<option value="">Choose a preset…</option>'
+    + (starred.length ? '<optgroup label="★ Favorites">' + starred.map((v) => opt(byValue.get(v), true)).join('') + '</optgroup>' : '')
+    + groups.map((g) => {
+      const list = g.options.filter((o) => !isFav.has(o.value));
+      if (!list.length && !g.empty) return '';
+      return `<optgroup label="${esc(g.label)}">`
+        + (list.length ? list.map((o) => opt(o, false)).join('') : `<option value="" disabled>${esc(g.empty)}</option>`)
+        + '</optgroup>';
+    }).join('');
   sel.value = [...sel.options].some((o) => o.value === cur) ? cur : '';
   const isOwn = !!sel.value && !sel.value.startsWith(BUILTIN_PREFIX) && !!own()[sel.value];
   $('r-saved-del').disabled = !isOwn;
+  const fb = $('r-saved-fav');
+  if (fb) {
+    const on = isFav.has(sel.value);
+    fb.disabled = !favable(sel.value);
+    fb.textContent = on ? '★' : '☆';
+    fb.classList.toggle('on', on);
+    fb.setAttribute('aria-pressed', String(on));
+    fb.title = !favable(sel.value) ? 'Pick a preset, then star it to keep it at the top of the list'
+      : on ? 'Remove from favorites' : 'Add to favorites (shown at the top of the list)';
+  }
   const b = BUILTIN.find((x) => BUILTIN_PREFIX + x.id === sel.value);
   sel.title = b ? b.note : 'Presets: each one sets the generator (alttpr.com, Kara\'s branch or AVIANART) and its settings';
+}
+
+function toggleFav() {
+  const v = $('r-saved').value;
+  if (!favable(v)) return;
+  const list = favs();
+  const i = list.indexOf(v);
+  if (i >= 0) list.splice(i, 1); else list.push(v);
+  setFavs(list);
+  paint();
 }
 
 function lookup(value) {
@@ -128,6 +170,7 @@ function del() {
   const all = own();
   delete all[name];
   putAll(all);
+  setFavs(favs().filter((v) => v !== name));
   setCurrent('');
   hooks.status(`Deleted preset "${name}".`, 'ok');
 }
@@ -190,6 +233,7 @@ export function init(h) {
   });
   $('r-saved-save').addEventListener('click', save);
   $('r-saved-del').addEventListener('click', del);
+  $('r-saved-fav').addEventListener('click', toggleFav);
   $('r-saved-export').addEventListener('click', exportPresets);
   $('r-saved-import').addEventListener('change', async (e) => {
     const f = e.target.files && e.target.files[0];

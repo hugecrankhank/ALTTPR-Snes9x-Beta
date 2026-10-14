@@ -809,7 +809,9 @@ function avianGroups() {
   groups.push({
     label: 'AVIANART · Players\' presets',
     options: [
-      ...Avian.PRESETS.map((p) => ({ value: AV_PREFIX + p.id, label: p.label, title: p.note || '' })),
+      // (OnlyADKDF is in Built-in, so it isn't listed here a second time)
+      ...Avian.PRESETS.filter((p) => !Saved.BUILTIN.some((b) => b.avian && b.avian.preset === p.id))
+        .map((p) => ({ value: AV_PREFIX + p.id, label: p.label, title: p.note || '' })),
       { value: AV_ASK, label: 'Type a player\'s preset (namespace/preset)…', title: 'Any AVIANART preset by its name, as PedChicken shows it, like jem041/onlyadkdf' },
     ],
   });
