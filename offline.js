@@ -1,5 +1,5 @@
 /*
- * "Make available offline": download everything the app needs in one go, so it
+ * "Make available offline" (in the Randomizer bar's ROM options): download everything the app needs in one go, so it
  * works in airplane mode, including the parts you haven't used yet (the emulator
  * core before your first game, Kara's generator and Python before your first
  * Kara seed).
@@ -130,8 +130,16 @@
     btn = document.createElement('button');
     btn.id = 'offline-btn';
     btn.type = 'button';
-    var header = document.querySelector('header'), before = document.getElementById('install-btn');
-    header.insertBefore(btn, before || null);
+    // in ROM options (with a note on what it's for); the header only if that's missing
+    var slot = document.getElementById('r-offline-slot');
+    if (slot) {
+      slot.appendChild(btn);
+      var field = document.getElementById('r-offline-field');
+      if (field) field.hidden = false;
+    } else {
+      var header = document.querySelector('header'), before = document.getElementById('install-btn');
+      header.insertBefore(btn, before || null);
+    }
     var st = document.createElement('style');
     st.textContent = '#offline-btn[data-state=ready] { color: var(--accent); }' +
       '#offline-btn[data-state=failed] { border-color: var(--warn); color: var(--warn); }' +

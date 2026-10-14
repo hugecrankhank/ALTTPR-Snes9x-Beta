@@ -105,7 +105,7 @@
   #rando-bar details[open] > summary::before { transform: rotate(45deg); margin-top: -4px; }
   #rando-bar details:not([open]) > summary::after { color: var(--dim); font-weight: 400; font-size: 12px; }
   #r-kara-more:not([open]) > summary::after { content: 'door, overworld, entrance and item shuffles\2026'; }
-  #r-rom-more:not([open]) > summary::after { content: 'heart beep, MSU-1 music, quickswap\2026'; }
+  #r-rom-more:not([open]) > summary::after { content: 'heart beep, MSU-1 music, quickswap, offline use\2026'; }
   /* Customizer (randomizer/custom-ui.js): alttpr.com's Customizer menus, one dropdown each, and presets */
   #r-custom > summary .cz-badge { padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--dim);
     font-size: 11px; font-weight: 600; }
@@ -271,9 +271,16 @@
   #r-msu-pick span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
   #r-msu-pick.on { border-color: #2a8a4a; }
   #r-msu-pick.on span { color: var(--accent); }
+  #r-offline-field[hidden] { display: none; }
+  #r-offline-slot button { height: 40px; }
+  #r-offline-field { flex-basis: 100%; }
+  #r-offline-field .sprite-row { align-items: center; gap: 12px; }
+  #r-offline-field .field-note { max-width: 60em; }
   body.phone #r-rom-more .rom-grid > label.f, body.phone #r-msu-field { flex: 1 1 100%; }
   body.phone #r-rom-more .rom-grid > label.f select { width: 100%; }
   body.phone #r-msu-pick { flex: 1 1 auto; max-width: none; min-width: 0; }
+  body.phone #rando-bar #r-offline-field .sprite-row { flex-wrap: wrap; align-items: flex-start; }
+  body.phone #r-offline-field .field-note { flex-basis: 100%; }
   #rando-bar details#r-rom-adv { flex-basis: 100%; }
   #rando-bar details#r-rom-adv > summary { padding: 0; border: 0; background: none; font-size: 12px; font-weight: 400;
     color: var(--dim); text-decoration: underline; text-underline-offset: 2px; }
@@ -809,6 +816,13 @@
       <p class="hint">MSU-1: pick the pack as one <code>.zip</code> or all its <code>.pcm</code> files (on iPhone, tap
         <b>Select</b> in the file picker), or its folder with <b>Folder…</b> on a computer. It plays right away and on
         every seed after. Your packs stay in <b>♪</b> in the header: switch, star (☆) or roll one (🎲) mid-game.</p>
+      <div class="f stack-field" id="r-offline-field" hidden>Offline use
+        <div class="sprite-row"><span id="r-offline-slot"></span>
+        <span class="field-note">Only for playing with no internet (a plane, bad Wi-Fi). It downloads the parts of the
+          app you haven't used yet, mainly the emulator and Kara's generator (about 25&nbsp;MB), so the app opens and
+          makes alttpr.com and Kara seeds offline. AVIANART, Kara's server, seed links and the sprite library still
+          need internet. You can skip it if you're always online: the app keeps what you use as you go.</span></div>
+      </div>
       <details id="r-rom-adv">
         <summary>Advanced: seed relays</summary>
         <div class="group">

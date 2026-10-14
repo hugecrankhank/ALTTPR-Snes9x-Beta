@@ -89,7 +89,7 @@ as a seed link; share the preset file instead.
 
 ## Playing offline
 
-Press **Make available offline** (in the header; behind **⚙** on phones) once while
+Press **Make available offline** (Randomizer bar → **ROM options** → Offline use) once while
 online. It downloads everything the app needs, including the emulator and both seed
 generators (Kara's runs on Python in the browser, about 15 MB), so the app opens and
 plays in airplane mode. The button then shows **✓ Available offline**, and after an
