@@ -233,8 +233,9 @@
   body.phone #rando-bar .stack-field { width: 100%; min-width: 0; }
   body.phone #r-saved, body.phone #r-avian-preset { min-width: 0; width: 0; flex: 1 1 0; }
   /* buttons with a small line under their name (Load ROM, Base ROM) */
-  .filebtn.two-line { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
-  .filebtn.two-line small { font-size: 10px; font-weight: 400; color: var(--dim); white-space: nowrap; }
+  .two-line { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
+  .two-line[hidden] { display: none; }
+  .two-line small { font-size: 10px; font-weight: 400; color: var(--dim); white-space: nowrap; }
   #r-base-label { border-color: #2a8a4a; }
   header .tracker-ctl { color: #8fb3d9; }
   #r-base-label:not(.ok) { background: #2a2410; border-color: var(--warn, #d29922); }
@@ -777,7 +778,7 @@
     <input type="file" id="r-base-input">
     <button id="r-generate">Generate &amp; Play</button>
     <button id="r-stop" type="button" hidden title="Stop making this seed">Stop</button>
-    <button id="r-download" hidden>Download ROM</button>
+    <button id="r-download" class="two-line" hidden title="Save the seed you just made as a .sfc file, to keep it or play it somewhere else (your sprite and options are included)">Download ROM<small>save this seed as a .sfc file</small></button>
     <button id="r-spoiler" hidden>Spoiler</button>
     <button id="r-share" type="button" hidden title="Copy a link that sets up this exact seed for someone else">&#128279; Share seed</button>
     <button id="r-share-race" type="button" hidden title="Copy a link to this seed for a race: same game for everyone, spoiler hidden">&#127937; Race link</button>
