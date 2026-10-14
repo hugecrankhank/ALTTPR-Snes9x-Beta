@@ -253,6 +253,10 @@
   body.phone #rando-bar .stack-field .sprite-row:first-of-type { flex-wrap: nowrap; }
   body.phone #rando-bar .stack-field { width: 100%; min-width: 0; }
   body.phone #r-saved { min-width: 0; width: 0; flex: 1 1 0; }
+  body.phone #rando-bar label.f { max-width: 100%; min-width: 0; }
+  body.phone #rando-bar label.f select { max-width: 100%; }
+  body.phone #rando-bar .sprite-row { flex-wrap: wrap; }
+  body.phone #rando-bar input#r-relay, body.phone #rando-bar input#r-avian-relay { width: 100%; max-width: 100%; }
   body.phone #r-avian-panel label.f { flex: 1 1 100%; }
   /* buttons with a small line under their name (Load ROM, Base ROM) */
   .two-line { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
@@ -596,6 +600,8 @@
       <div class="sprite-row" id="r-avian-tabs" role="group" aria-label="AVIANART settings tabs"></div>
       <span id="r-avian-desc" class="field-note"></span>
     </div>
+    <!-- the open tab's settings, right under the tab buttons -->
+    <div id="r-avian-panel" class="avian-only" hidden></div>
     <label class="f avian-only" title="A race seed: AVIANART keeps its spoiler hidden">Race
       <select id="r-avian-race">
         <option value="no" selected>No</option>
@@ -719,7 +725,6 @@
       <div id="r-sprite-sheet" hidden><canvas></canvas></div>
     </div>
   </div>
-  <div id="r-avian-panel" class="avian-only" hidden></div>
   <details id="r-kara-more" class="kara-only">
     <summary>More Kara settings</summary>
     <div id="r-kara-more-body"></div>
