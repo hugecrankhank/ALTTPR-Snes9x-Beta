@@ -236,6 +236,7 @@
   .filebtn.two-line { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
   .filebtn.two-line small { font-size: 10px; font-weight: 400; color: var(--dim); white-space: nowrap; }
   #r-base-label { border-color: #2a8a4a; }
+  header .tracker-ctl { color: #8fb3d9; }
   #r-base-label:not(.ok) { background: #2a2410; border-color: var(--warn, #d29922); }
 
   /* seed links (randomizer/share.js) */
@@ -488,7 +489,7 @@
   <!-- No `accept` filter: iOS doesn't know the .sfc/.smc types and would gray
        the files out. The ROM is checked in JS after it's picked instead. -->
   <input type="file" id="rom-input">
-  <label class="ctl">World
+  <label class="ctl tracker-ctl" title="Tracker setting only: tells the tracker which world state you're playing. It doesn't change the seed (set that in the Randomizer bar). Seeds generated here set it for you.">Tracker world
     <select id="gamemode">
       <option value="open">Open</option>
       <option value="standard">Standard</option>
@@ -497,7 +498,7 @@
       <option value="retro">Retro</option>
     </select>
   </label>
-  <label class="ctl">Dungeon items
+  <label class="ctl tracker-ctl" title="Tracker setting only: tells the tracker how dungeon items are shuffled. It doesn't change the seed (set that in the Randomizer bar). Seeds generated here set it for you.">Tracker dungeon items
     <select id="dungeonitems">
       <option value="standard">Standard</option>
       <option value="mapcompass">Map/Compass</option>
