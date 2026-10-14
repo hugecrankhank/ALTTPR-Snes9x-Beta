@@ -17,10 +17,13 @@
   'use strict';
   var $ = function (id) { return document.getElementById(id); };
 
+  // iPhone/iPad Home Screen app (navigator.standalone is Apple's) or a touch
+  // screen. An app installed on a computer (Chrome/Edge "Install app", which
+  // also reports display-mode: standalone) opens real windows fine, so it
+  // keeps the pop-outs.
   function useSheet() {
     try {
       if (window.navigator.standalone) return true;
-      if (window.matchMedia('(display-mode: standalone)').matches) return true;
       return window.matchMedia('(pointer: coarse)').matches;
     } catch (e) { return false; }
   }
