@@ -31,6 +31,7 @@
 
   // ── storage: in-game saves (SRAM) and save-state slots, per game ────────
   var dbp = null;
+  cfg.slot = Math.min(4, Math.max(1, cfg.slot | 0 || 1));
   function db() {
     if (dbp) return dbp;
     dbp = new Promise(function (res, rej) {
@@ -63,13 +64,15 @@
     '  background: rgba(22,27,34,.92); color: #e6e9ee; border: 1px solid #2a313c; padding: 5px 11px; border-radius: 8px;',
     '  font: 13px system-ui, sans-serif; pointer-events: none; transition: opacity .15s, transform .15s; white-space: nowrap; }',
     '.s9x-toast.show { opacity: 1; transform: translate(-50%, 0); }',
-    /* top pill: pause / fast-forward / menu */
+    /* top pill: pause / fast-forward / save state / load state / slot */
     '.s9x-pill { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; gap: 4px;',
     '  background: rgba(13,17,23,.6); border: 1px solid rgba(255,255,255,.12); border-radius: 18px; padding: 3px; transition: opacity .3s; }',
     '.s9x-pill button { all: unset; cursor: pointer; width: 34px; height: 28px; border-radius: 14px; display: flex; align-items: center;',
     '  justify-content: center; color: #e6e9ee; font: 600 14px system-ui, sans-serif; }',
     '.s9x-pill button:hover { background: rgba(255,255,255,.12); }',
     '.s9x-pill button.on { background: #1f6f3a; }',
+    '.s9x-pill .sep { width: 1px; margin: 4px 1px; background: rgba(255,255,255,.18); }',
+    '.s9x-pill [data-a=slot] { width: 30px; font-size: 12px; color: #aab3bf; }',
     '.s9x.idle .s9x-pill { opacity: 0; pointer-events: none; }',
     '.s9x.touch .s9x-pill { opacity: .7; }',
     /* on-screen controller */
@@ -161,7 +164,11 @@
     pill = el('div', 's9x-pill',
       '<button type="button" data-a="pause" title="Pause">❚❚</button>' +
       '<button type="button" data-a="ff" title="Fast-forward (hold `)">⏩</button>' +
-      '<button type="button" data-a="menu" title="Menu">⋯</button>');
+      '<span class="sep"></span>' +
+      '<button type="button" data-a="save" title="Save state (F5)">💾</button>' +
+      '<button type="button" data-a="load" title="Load state (F8)">📂</button>' +
+      '<button type="button" data-a="slot" title="Save-state slot (tap to change)"></button>');
+    syncSlot();
     touchEl = el('div', 's9x-touch',
       '<div class="btn sh l" data-btn="L">L</div><div class="btn sh r" data-btn="R">R</div>' +
       '<div class="dpad" data-dpad><i class="u"></i><i class="d"></i><i class="l"></i><i class="r"></i></div>' +
@@ -181,7 +188,9 @@
       var a = b.dataset.a;
       if (a === 'pause') setPaused(!paused);
       else if (a === 'ff') setFF(!ff);
-      else if (a === 'menu') openMenu();
+      else if (a === 'save') saveState();
+      else if (a === 'load') loadState();
+      else if (a === 'slot') { cfg.slot = cfg.slot % 4 + 1; saveCfg(); syncSlot(); toast('Slot ' + cfg.slot); }
     });
     // Desktop: the pill hides itself when the mouse is still.
     var idleT = null;
@@ -255,7 +264,9 @@
     layoutTouch();
   }
 
-  // ── menu ────────────────────────────────────────────────────────────────
+  function syncSlot() { var b = pill && pill.querySelector('[data-a=slot]'); if (b) b.textContent = 'S' + cfg.slot; }
+
+  // ── menu (opened from the app's ⚙ → Emulator button) ────────────────────
   function keyName(code) {
     if (!code) return '—';
     return code.replace(/^Key/, '').replace(/^Digit/, '').replace(/^Arrow/, '').replace(/Left$|Right$/, function (s) { return /^(Shift|Control|Alt|Meta)/.test(code) ? ' ' + s : s; });
@@ -287,11 +298,9 @@
       '<div class="hd"><b>Snes<span>9x</span></b><button type="button" class="primary" data-a="close">Back to game</button></div>' +
       '<div class="bd">' +
       '<h4>Game</h4><div class="acts">' +
-        '<button type="button" data-a="save">Save state</button><button type="button" data-a="load">Load state</button>' +
-        '<select data-s="slot" style="width:auto">' + opts([[1, 'Slot 1'], [2, 'Slot 2'], [3, 'Slot 3'], [4, 'Slot 4']], cfg.slot) + '</select>' +
         '<button type="button" data-a="restart">Restart</button>' +
         (root.requestFullscreen ? '<button type="button" data-a="fs">Full screen</button>' : '') +
-      '</div><p class="hint">In-game saves are kept automatically for each seed. Keys: F5 save state, F8 load state, hold ` to fast-forward.</p>' +
+      '</div><p class="hint">Save and load states from the bar on the game screen (💾 / 📂, S1–S4 picks the slot). In-game saves are kept automatically for each seed. Keys: F5 save state, F8 load state, hold ` to fast-forward.</p>' +
       '<h4>Sound</h4><div class="row"><span>Volume</span><input type="range" min="0" max="1" step="0.05" data-s="volume" value="' + cfg.volume + '"></div>' +
       '<div class="row"><span>Mute</span><input type="checkbox" data-s="muted"' + (cfg.muted ? ' checked' : '') + '></div>' +
       '<h4>Graphics</h4>' +
@@ -316,8 +325,6 @@
       var b = e.target.closest('button'); if (!b) return;
       var a = b.dataset.a;
       if (a === 'close') closeMenu();
-      else if (a === 'save') { saveState(); }
-      else if (a === 'load') { loadState(function (ok) { if (ok) closeMenu(); }); menuEl._resume = true; }
       else if (a === 'restart') { if (confirm('Restart the game?')) { core.reset(); audio.clear(); menuEl._resume = true; closeMenu(); } }
       else if (a === 'fs') { closeMenu(); fullscreen(); }
       else if (a === 'resetmap') { input.keymap = Object.assign({}, EmuInput.DEFAULT_KEYS); input.padmap = Object.assign({}, EmuInput.DEFAULT_PAD); cfg.keymap = cfg.padmap = null; saveCfg(); renderMenu(); }
@@ -328,7 +335,7 @@
       if (e.target.dataset.ext && hooks.menu && hooks.menu.input) { hooks.menu.input(e.target); return; }
       var s = e.target.dataset.s; if (!s) return;
       var v = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
-      if (s === 'volume' || s === 'opacity' || s === 'size' || s === 'slot') v = +v;
+      if (s === 'volume' || s === 'opacity' || s === 'size') v = +v;
       cfg[s] = v; saveCfg();
       if (s === 'volume' || s === 'muted') { ejs.volume = cfg.volume; ejs.muted = cfg.muted; ejs.setVolume(cfg.volume); }
       else if (s === 'filter') applyFilter();
@@ -603,6 +610,7 @@
       stats.started = performance.now();
       window.EJS_emulator = ejs;
       setPaused(false);
+      try { document.dispatchEvent(new Event('s9x-ready')); } catch (e) {}
       if (typeof window.EJS_onGameStart === 'function') { try { window.EJS_onGameStart(); } catch (e) { console.error(e); } }
       return ejs;
     }).catch(function (e) {
@@ -617,5 +625,7 @@
     get core() { return running ? core : null; },
     get paused() { return paused; },
     toast: function (msg) { if (toastEl) toast(msg); },
+    openMenu: function () { if (running) openMenu(); },
+    get ready() { return running; },
   };
 })();

@@ -576,6 +576,7 @@
   <label class="ctl" id="onlyadkd-sel" title="OnlyADKD: sets every OnlyADKD option on the trackers and loads its prebuilt entrance map (same as the OnlyADKD button next to New Game on the map)">
     <input type="checkbox" id="onlyadkd-toggle"> OnlyADKD
   </label>
+  <button id="emu-settings-btn" type="button" hidden title="Emulator settings: sound, graphics filter, aspect ratio, on-screen controller, controls, restart">&#127918; Emulator</button>
 
   <!-- Desktop layout (desktop.js): tracker windows -->
   <div id="win-bar" role="group" aria-label="Tracker windows">
@@ -1250,6 +1251,16 @@
     deferredPrompt.userChoice.finally(function () { deferredPrompt = null; $('install-btn').hidden = true; });
   });
   window.addEventListener('appinstalled', function () { $('install-btn').hidden = true; });
+
+  // ── ⚙ → Emulator: the Snes9x settings (save/load state stay on the game's own bar)
+  function showEmuBtn() { $('emu-settings-btn').hidden = !(window.Snes9xPlayer && Snes9xPlayer.ready); }
+  document.addEventListener('s9x-ready', showEmuBtn);
+  showEmuBtn();
+  $('emu-settings-btn').addEventListener('click', function () {
+    // fold the phone's ⚙ menu away first so the game box is back to full size
+    if (document.body.classList.contains('phone-menu')) { var g = $('phone-gear'); if (g) g.click(); }
+    if (window.Snes9xPlayer) Snes9xPlayer.openMenu();
+  });
 
   // ── link status pill ──────────────────────────────────────────────────────
   function paint(s) {
