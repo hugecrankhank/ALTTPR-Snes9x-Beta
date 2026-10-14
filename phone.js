@@ -202,6 +202,15 @@
     gear.addEventListener('click', function () {
       var open = document.body.classList.toggle('phone-menu');
       gear.setAttribute('aria-expanded', String(open));
+      // closing ⚙ puts everything away: the Randomizer button lives in the ⚙
+      // menu, so a randomizer bar left open would have no way to close
+      if (!open && document.body.classList.contains('rando-open')) {
+        document.body.classList.remove('rando-open');
+        var t = $('r-toggle');
+        if (t) t.setAttribute('aria-expanded', 'false');
+        try { localStorage.setItem('unified-kara-open', '0'); } catch (e) {}
+        setTimeout(function () { window.dispatchEvent(new Event('resize')); }, 30);
+      }
     });
     var header = document.querySelector('header');
     // 🗺 Map settings in the header (opens Hutch's map Settings panel)
