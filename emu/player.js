@@ -64,7 +64,7 @@
     '  background: rgba(22,27,34,.92); color: #e6e9ee; border: 1px solid #2a313c; padding: 5px 11px; border-radius: 8px;',
     '  font: 13px system-ui, sans-serif; pointer-events: none; transition: opacity .15s, transform .15s; white-space: nowrap; }',
     '.s9x-toast.show { opacity: 1; transform: translate(-50%, 0); }',
-    /* top pill: pause / fast-forward / save state / load state / slot */
+    /* top pill: pause / fast-forward / save state / load state / slot / settings */
     '.s9x-pill { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 20; display: flex; gap: 4px;',
     '  background: rgba(13,17,23,.6); border: 1px solid rgba(255,255,255,.12); border-radius: 18px; padding: 3px; transition: opacity .3s; }',
     '.s9x-pill button { all: unset; cursor: pointer; width: 34px; height: 28px; border-radius: 14px; display: flex; align-items: center;',
@@ -167,7 +167,9 @@
       '<span class="sep"></span>' +
       '<button type="button" data-a="save" title="Save state (F5)">💾</button>' +
       '<button type="button" data-a="load" title="Load state (F8)">📂</button>' +
-      '<button type="button" data-a="slot" title="Save-state slot (tap to change)"></button>');
+      '<button type="button" data-a="slot" title="Save-state slot (tap to change)"></button>' +
+      '<span class="sep"></span>' +
+      '<button type="button" data-a="menu" title="Emulator settings">⋯</button>');
     syncSlot();
     touchEl = el('div', 's9x-touch',
       '<div class="btn sh l" data-btn="L">L</div><div class="btn sh r" data-btn="R">R</div>' +
@@ -190,6 +192,7 @@
       else if (a === 'ff') setFF(!ff);
       else if (a === 'save') saveState();
       else if (a === 'load') loadState();
+      else if (a === 'menu') openMenu();
       else if (a === 'slot') { cfg.slot = cfg.slot % 4 + 1; saveCfg(); syncSlot(); toast('Slot ' + cfg.slot); }
     });
     // The pill stays out of the way: it shows when the picture is tapped (or the
