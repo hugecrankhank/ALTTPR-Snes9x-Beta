@@ -71,6 +71,9 @@
   #rando-bar input[type=text] { background: #0d1117; color: var(--text); border: 1px solid var(--line);
     border-radius: 6px; padding: 5px 8px; font: inherit; font-size: 13px; width: 9em; }
   #rando-bar .group { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; }
+  /* the bar's main fields line up by their labels, so boxes sit on one line even
+     when a field has a note under it (Load a seed, Link sprite, AVIANART) */
+  #rando-bar > .group { align-items: flex-start; }
   #rando-bar details { color: var(--dim); font-size: 12px; align-self: center; }
   #rando-bar details[open] { flex-basis: 100%; }
   #rando-bar details summary { cursor: pointer; }
