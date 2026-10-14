@@ -116,6 +116,8 @@
   "randomizer/remote.js",
   "randomizer/avianart.js",
   "randomizer/saved-presets.js",
+  "randomizer/avianart-ui.js",
+  "randomizer/avianart-settings.js",
   "randomizer/share.js",
   "randomizer/sprite.js",
   "randomizer/worker.js",

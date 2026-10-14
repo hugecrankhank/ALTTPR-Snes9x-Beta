@@ -270,6 +270,21 @@ export async function generate(presetId, { race = false, signal } = {}) {
   return String(hash);
 }
 
+/** Ask AVIANART to roll your own settings (Door Randomizer YAML names): the new seed's hash. */
+export async function generateCustom(settings, { race = false, signal } = {}) {
+  // AVIANART's own customizer: POST api.php?action=generate (no preset), body [settings]
+  const j = await call('action=generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify([{ args: { ...settings, race: !!race } }]),
+  }, signal);
+  const hash = j && j.status === 200 && j.response && j.response.hash;
+  if (!hash) {
+    throw new Error('AVIANART didn\'t roll your settings' + (j && j.response && j.response.message ? `: ${j.response.message}` : '.'));
+  }
+  return String(hash);
+}
+
 /** A seed by its hash, waiting while AVIANART is still making it: the response. */
 export async function seed(hash, { signal, onWait } = {}) {
   const started = Date.now();

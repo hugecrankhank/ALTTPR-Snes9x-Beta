@@ -51,9 +51,13 @@ export function paint() {
     + '</optgroup>'
     + (mine.length
       ? '<optgroup label="Your presets">' + mine.map((n) => `<option value="${esc(n)}">${esc(n)} · ${GEN_LABEL[genOf(all[n])] || 'alttpr.com'}</option>`).join('') + '</optgroup>'
-      : '<optgroup label="Your presets"><option value="" disabled>None yet: set things up, then Save</option></optgroup>');
+      : '<optgroup label="Your presets"><option value="" disabled>None yet: set things up, then Save as preset</option></optgroup>')
+    // other sites' own presets (AVIANART's list), straight from their generator
+    + (hooks && hooks.extraGroups ? hooks.extraGroups() : []).map((g) => `<optgroup label="${esc(g.label)}">`
+      + g.options.map((o) => `<option value="${esc(o.value)}"${o.title ? ` title="${esc(o.title)}"` : ''}>${esc(o.label)}</option>`).join('')
+      + '</optgroup>').join('');
   sel.value = [...sel.options].some((o) => o.value === cur) ? cur : '';
-  const isOwn = !!sel.value && !sel.value.startsWith(BUILTIN_PREFIX);
+  const isOwn = !!sel.value && !sel.value.startsWith(BUILTIN_PREFIX) && !!own()[sel.value];
   $('r-saved-del').disabled = !isOwn;
   const b = BUILTIN.find((x) => BUILTIN_PREFIX + x.id === sel.value);
   sel.title = b ? b.note : 'Presets: each one sets the generator (alttpr.com, Kara\'s branch or AVIANART) and its settings';
@@ -71,6 +75,16 @@ function lookup(value) {
 
 /** Switch to a preset's generator and put its settings in the bar. */
 export async function apply(value, { quiet = false } = {}) {
+  // a site's own preset (like AVIANART's): the page sets it up
+  if (hooks.applyExtra) {
+    const done = await hooks.applyExtra(value);
+    if (done) {
+      if (done.cancelled) { paint(); return false; }
+      setCurrent(done.keep === false ? '' : value);
+      if (!quiet) hooks.status(`${done.name} is set. Press Generate & Play to roll it.`, 'ok');
+      return true;
+    }
+  }
   const hit = lookup(value);
   if (!hit) return false;
   const { name, p } = hit;
@@ -89,7 +103,7 @@ export async function apply(value, { quiet = false } = {}) {
 async function save() {
   const gen = hooks.gen();
   const cur = current();
-  const suggest = cur && !cur.startsWith(BUILTIN_PREFIX) ? cur : '';
+  const suggest = cur && own()[cur] ? cur : '';
   let name = window.prompt(`Name this preset (${GEN_LABEL[gen]} with the settings you have now):`, suggest);
   if (name == null) return;
   name = name.trim().slice(0, 60);
@@ -109,7 +123,7 @@ async function save() {
 
 function del() {
   const name = $('r-saved').value;
-  if (!name || name.startsWith(BUILTIN_PREFIX)) return;
+  if (!name || !own()[name]) return;
   if (!window.confirm(`Delete the preset "${name}"?`)) return;
   const all = own();
   delete all[name];

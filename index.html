@@ -221,7 +221,24 @@
   #rando-bar .stack-field .sprite-row { flex-wrap: wrap; align-items: center; }
   #rando-bar .stack-field select { max-width: 100%; }
   #r-saved { min-width: 13em; }
-  #r-avian-preset { min-width: 15em; }
+  #r-avian-tabs button { padding: 6px 12px; }
+  #r-avian-tabs button.on { border-color: var(--accent); background: #12261a; color: var(--accent); }
+  #r-avian-mode { padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--dim); font-size: 10px; margin-left: 4px; }
+  #r-avian-mode.on { color: #0e1116; background: var(--accent); border-color: var(--accent); }
+  #r-avian-desc b { color: var(--text); font-weight: 600; }
+  #r-avian-panel { flex-basis: 100%; display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; border: 1px solid var(--line);
+    border-radius: 8px; background: #0d1117; max-height: min(58vh, 600px); overflow-y: auto; -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain; }
+  body.phone #r-avian-panel { max-height: none; overflow: visible; }
+  #r-avian-panel[hidden] { display: none !important; }
+  #r-avian-panel .av-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; font-size: 12px; color: var(--dim); }
+  #r-avian-panel .av-head b { color: var(--text); font-size: 13px; }
+  #r-avian-panel .av-group { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: flex-end; padding-top: 8px; border-top: 1px solid #1c222b; }
+  #r-avian-panel .av-group:first-of-type { border-top: 0; padding-top: 0; }
+  #r-avian-panel .av-checks { display: flex; flex-wrap: wrap; gap: 6px 16px; flex-basis: 100%; }
+  #r-avian-panel .av-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
+  #r-avian-panel select { max-width: 100%; }
+  #r-avian-panel .hint { margin: 0; font-size: 11px; color: var(--dim); }
   #rando-bar .field-note { text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--dim); max-width: 28em; }
   #rando-bar .small-row { gap: 12px; }
   #rando-bar .linkish { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; cursor: pointer;
@@ -231,7 +248,8 @@
   body.phone #r-saved-field { padding-right: 0; margin-right: 0; border-right: 0; }
   body.phone #rando-bar .stack-field .sprite-row:first-of-type { flex-wrap: nowrap; }
   body.phone #rando-bar .stack-field { width: 100%; min-width: 0; }
-  body.phone #r-saved, body.phone #r-avian-preset { min-width: 0; width: 0; flex: 1 1 0; }
+  body.phone #r-saved { min-width: 0; width: 0; flex: 1 1 0; }
+  body.phone #r-avian-panel label.f { flex: 1 1 100%; }
   /* buttons with a small line under their name (Load ROM, Base ROM) */
   .two-line { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
   .two-line[hidden] { display: none; }
@@ -570,11 +588,8 @@
       </div>
     </div>
     <div id="r-kara" class="kara-only"></div>
-    <div class="f stack-field avian-only" id="r-avian-field">AVIANART preset
-      <div class="sprite-row">
-        <select id="r-avian-preset" aria-label="AVIANART preset"></select>
-        <input type="text" id="r-avian-custom" hidden placeholder="namespace/preset" aria-label="Someone's AVIANART preset" autocomplete="off" spellcheck="false" autocapitalize="off">
-      </div>
+    <div class="f stack-field avian-only" id="r-avian-field"><span>AVIANART settings <span id="r-avian-mode">Preset</span></span>
+      <div class="sprite-row" id="r-avian-tabs" role="group" aria-label="AVIANART settings tabs"></div>
       <span id="r-avian-desc" class="field-note"></span>
     </div>
     <label class="f avian-only" title="A race seed: AVIANART keeps its spoiler hidden">Race
@@ -700,6 +715,7 @@
       <div id="r-sprite-sheet" hidden><canvas></canvas></div>
     </div>
   </div>
+  <div id="r-avian-panel" class="avian-only" hidden></div>
   <details id="r-kara-more" class="kara-only">
     <summary>More Kara settings</summary>
     <div id="r-kara-more-body"></div>

@@ -362,11 +362,13 @@ to `ALLOWED` at the top of the worker (the built-in relay only serves that site)
 
 **AVIANART** is the third generator in the menu beside **Randomizer** (with alttpr.com and Kara's
 branch). It rolls seeds on [avianart.games](https://avianart.games) (its Door Randomizer server, the one
-PedChicken uses on Discord) and plays them here. AVIANART rolls from presets only, so its settings are
-**AVIANART preset** (its whole list, by category, fetched from the site each time; a copy is built in)
-and **Race** (spoiler hidden). **Someone else's preset…** takes a player's preset name like
-`jem041/onlyadkdf` (`namespace/preset`, as PedChicken shows it). **Generate & Play** and the header's
-**Reroll** roll the chosen preset. Pasting an AVIANART permalink (`https://avianart.games/perm/…`) into
+PedChicken uses on Discord) and plays them here. Its presets are in **Saved presets**, grouped
+**AVIANART · Main**, **AVIANART · Ladder** and so on (its whole list, fetched from the site; a copy is
+built in), plus **Type a player's preset…** for names like `jem041/onlyadkdf`. Or set up your own with
+**AVIANART settings**: **Items**, **Entrances**, **Dungeons** and **Enemizer**, the same settings as
+AVIANART's customizer (Door Randomizer 1.5.7-u; `tools/avianart-settings.py` rebuilds them). Changing
+any of them switches Generate & Play from the preset to your settings; **Save as preset** keeps them.
+**Race** hides the spoiler. Pasting an AVIANART permalink (`https://avianart.games/perm/…`) into
 **Load a seed** plays that exact seed, so everyone in a race can load the same one.
 
 The ROM is built in your browser from your Japanese 1.0 ROM, then your sprite, music and
