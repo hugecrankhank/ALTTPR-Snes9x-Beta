@@ -2,7 +2,7 @@
 // patch the player's own Japanese 1.0 ROM in the browser -> boot it.
 import { md5 } from './md5.js';
 import { parseSprite, applySprite, drawHead, drawSheet } from './sprite.js';
-import { MsuPlayer, trackNumber } from './msu.js';
+import { MsuPlayer, trackNumber, isRandoTitle } from './msu.js';
 import { listZip, zipEntryBlob } from './zip.js';
 import { buildLink, readLink, clearLink, codeForSeed, codeFromRom, codeNames, renderCode, PARAMS } from './share.js';
 import { openLibrary, labelOf, isPlainLink, loadList } from './library.js';
@@ -1374,8 +1374,7 @@ function fmtSize(n) {
 function prepareLoadedRom(bytes) {
   if (!msu.count) return bytes;
   const off = bytes.length % 1024 === 512 ? 512 : 0;
-  const h = String.fromCharCode(bytes[off + 0x7FC0], bytes[off + 0x7FC1]);
-  if (bytes.length < off + 0x200000 || (h !== 'VT' && h !== 'GK')) return bytes;
+  if (bytes.length < off + 0x200000 || !isRandoTitle(bytes.subarray(off + 0x7FC0, off + 0x7FC2))) return bytes;
   const rom = bytes.slice(off);
   rom[0x18021A] = 0x01;
   updateChecksum(rom);
@@ -1398,8 +1397,7 @@ async function liveMusic(on) {
   if (!run || !br || !br.patchRom || !br.ready || !br.ready()) return null;   // no game running
   const hdr = run.bytes.length % 1024 === 512 ? 512 : 0;
   const rom = run.bytes.slice(hdr);
-  const t = String.fromCharCode(rom[0x7FC0], rom[0x7FC1]);
-  if (rom.length < 0x200000 || (t !== 'VT' && t !== 'GK')) return 'not-rando';
+  if (rom.length < 0x200000 || !isRandoTitle(rom.subarray(0x7FC0, 0x7FC2))) return 'not-rando';
   const want = on ? 1 : 0;
   if (rom[NO_BGM] !== want) {
     rom[NO_BGM] = want;

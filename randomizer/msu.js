@@ -23,6 +23,18 @@ const FALLBACK = [0,
 const OVERWORLD = new Set([2, 3, 4, 5, 7, 9, 15, 60, 61]);
 const RESUME_MS = 30000;          // msu.asm MSUResumeTimer: 1800 frames
 
+/**
+ * A randomizer ROM's title starts with two capitals: "VT" (alttpr.com and this
+ * app's generator), "GK" (Kara's branch), "DR"/"ER"/"OR" (Door, Entrance and
+ * Overworld Randomizer, as AVIANART makes them). The plain game's is "ZELDA…"
+ * (JP) or "THE LEGEND…" (US). All of these randomizers share the music-off
+ * flag at 0x18021A.
+ */
+export function isRandoTitle(bytes) {
+  const t = String.fromCharCode(bytes[0], bytes[1]);
+  return /^[A-Z]{2}$/.test(t) && t !== 'ZE' && t !== 'TH';
+}
+
 export function trackNumber(fileName) {
   const m = /-(\d+)\.pcm$/i.exec(fileName);
   return m ? Number(m[1]) : null;
@@ -93,9 +105,7 @@ export class MsuPlayer {
     const st = b.status();
     if (!st.running || (st.mode !== 'live' && st.mode !== 'snapshot')) return false;
     // only when the running ROM is a randomizer ROM with its own music off
-    // "VT" = alttpr.com / built-in generator, "GK" = Kara's branch
-    const t = String.fromCharCode(...b.read(0x7FC0, 2));
-    return (t === 'VT' || t === 'GK') && b.read(NO_BGM, 1)[0] === 1;
+    return isRandoTitle(b.read(0x7FC0, 2)) && b.read(NO_BGM, 1)[0] === 1;
   }
 
   ram(addr, len = 1) { return window.AlttpBridge.read(WRAM + addr, len); }
