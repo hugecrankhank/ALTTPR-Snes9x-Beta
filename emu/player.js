@@ -74,7 +74,7 @@
     '.s9x-pill .sep { width: 1px; margin: 4px 1px; background: rgba(255,255,255,.18); }',
     '.s9x-pill [data-a=slot] { width: 30px; font-size: 12px; color: #aab3bf; }',
     '.s9x.idle .s9x-pill { opacity: 0; pointer-events: none; }',
-    '.s9x.touch .s9x-pill { opacity: .7; }',
+    '.s9x.touch:not(.idle) .s9x-pill { opacity: .85; }',
     /* on-screen controller */
     '.s9x-touch { display: none; position: absolute; inset: 0; z-index: 10; pointer-events: none; --pad: 140px; touch-action: none; -webkit-touch-callout: none; }',
     '.s9x.touch .s9x-touch { display: block; }',
@@ -192,12 +192,22 @@
       else if (a === 'load') loadState();
       else if (a === 'slot') { cfg.slot = cfg.slot % 4 + 1; saveCfg(); syncSlot(); toast('Slot ' + cfg.slot); }
     });
-    // Desktop: the pill hides itself when the mouse is still.
+    // The pill stays out of the way: it shows when the picture is tapped (or the
+    // mouse moves over it) and fades out again after a few seconds. Presses on
+    // the on-screen controller don't bring it up. While paused it stays, so
+    // there's always a way to resume.
     var idleT = null;
-    function wakeUi() { root.classList.remove('idle'); clearTimeout(idleT); idleT = setTimeout(function () { if (!root.classList.contains('touch')) root.classList.add('idle'); }, 2500); }
-    root.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse') wakeUi(); });
-    root.addEventListener('pointerdown', wakeUi);
-    wakeUi();
+    function hideSoon(ms) {
+      clearTimeout(idleT);
+      idleT = setTimeout(function () { if (!paused) root.classList.add('idle'); else hideSoon(1000); }, ms);
+    }
+    function wakeUi(ms) { root.classList.remove('idle'); hideSoon(ms || 3000); }
+    root.addEventListener('pointermove', function (e) { if (e.pointerType === 'mouse') wakeUi(2500); });
+    root.addEventListener('pointerdown', function (e) {
+      if (e.target.closest && e.target.closest('.s9x-touch .btn, .s9x-touch .dpad')) return;
+      wakeUi(e.target.closest && e.target.closest('.s9x-pill') ? 4000 : 3000);
+    });
+    root.classList.add('idle');
     // keep the mouse free (no pointer lock, no context menu on the picture)
     canvas.addEventListener('contextmenu', function (e) { e.preventDefault(); });
     new ResizeObserver(layoutTouch).observe(root);
