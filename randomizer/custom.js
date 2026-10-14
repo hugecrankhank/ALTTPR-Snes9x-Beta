@@ -371,3 +371,85 @@ export function fromAlttprSave(json) {
   }
   return { state: normalizeState(st), fields };
 }
+
+// ── an alttpr.com customizer API request (what SahasrahBot's presets hold) -> state + bar fields ──
+// `settings` is the preset's `settings:` block: { mode, goal, crystals, eq, l, drops, custom: { item: { count },
+// drop: { count }, <setting>: v }, … }. Starting items the Starting Equipment menu has no slot for (keys, maps,
+// bombs, upgrades…) are kept in the equipment as counts, so equipmentList still sends them.
+export function fromApiPreset(settings) {
+  if (!settings || typeof settings !== 'object') return null;
+  const st = defaultState();
+  const cu = settings.custom || {};
+  // Settings, Logic
+  for (const [k, v] of Object.entries(cu)) {
+    if (k === 'item' || k === 'drop') continue;
+    if (k in st.glitches) st.glitches[k] = !!v;
+    else if (SELECTS.some((s) => s.key === k)) {
+      const sel = SELECTS.find((s) => s.key === k);
+      const val = v === 'none' ? 'off' : String(v);
+      st.settings[k] = sel.options.some(([o]) => o === val) ? val : sel.def;
+    } else if (NUMBERS.some((n) => n.key === k)) st.settings[k] = v === '' || v == null ? '' : String(v);
+    else if (SETTINGS.some((s) => s.key === k)) st.settings[k] = !!v;
+  }
+  if (settings.glitches === 'no_logic') st.noLogic = true;
+  // Item Pool / Prize Pack Pool: a preset lists every count, so anything it leaves out is none
+  const counts = (into, from) => {
+    if (!from) return;
+    for (const k of Object.keys(into)) into[k] = 0;
+    for (const [k, v] of Object.entries(from)) if (k in into) into[k] = Math.max(0, Number(v) || 0);
+  };
+  counts(st.items, cu.item && cu.item.count);
+  counts(st.drops, cu.drop && cu.drop.count);
+  // Locations: keys are base64 "Name:1"
+  const known = new Set(catalog().locations.map((l) => l.name));
+  for (const [hash, item] of Object.entries(settings.l || {})) {
+    const name = known.has(hash) ? hash : (B64(hash) || '').replace(/:\d+$/, '');
+    if (known.has(name) && item) st.locations[name] = String(item).replace(/:\d+$/, '');
+  }
+  // Prize Packs
+  for (const [p, slots] of Object.entries(settings.drops || {})) {
+    if (st.packs[p] && Array.isArray(slots)) st.packs[p] = st.packs[p].map((v, i) => slots[i] || v);
+  }
+  // Starting Equipment
+  const eq = st.equipment;
+  eq.BossHeartContainer = 0;
+  const tally = {};
+  (settings.eq || []).forEach((n) => { tally[n] = (tally[n] || 0) + 1; });
+  const RUPEES = { ThreeHundredRupees: 300, OneHundredRupees: 100, FiftyRupees: 50, TwentyRupees: 20, FiveRupees: 5, OneRupee: 1 };
+  let bottle = 1;
+  for (const [n, c] of Object.entries(tally)) {
+    const slot = EQUIPMENT.find((e) => e.key === n);
+    if (RUPEES[n]) eq.Rupees = Math.min(9999, (eq.Rupees || 0) + RUPEES[n] * c);
+    else if (n === 'BossHeartContainer') eq.BossHeartContainer = Math.min(20, c);
+    else if (n === 'BowAndSilverArrows') eq.ProgressiveBow = 3;
+    else if (n === 'Bow' || n === 'ProgressiveBow') eq.ProgressiveBow = Math.max(eq.ProgressiveBow, n === 'Bow' ? 2 : Math.min(c + 1, 3));
+    else if (n === 'SilverArrowUpgrade') eq.ProgressiveBow = eq.ProgressiveBow >= 2 ? 3 : 1;
+    else if (n === 'Boomerang') eq.Boomerang |= 1;
+    else if (n === 'RedBoomerang') eq.Boomerang |= 2;
+    else if (n === 'OcarinaActive') eq.Ocarina = 2;
+    else if (n === 'OcarinaInactive') eq.Ocarina = Math.max(eq.Ocarina, 1);
+    else if (BOTTLES.includes(n) && n) { for (let i = 0; i < c && bottle <= 4; i++) eq[`Bottle${bottle++}`] = BOTTLES.indexOf(n); }
+    else if (slot) eq[n] = slot.max ? Math.min(slot.max, c) : true;
+    else if (EQUIPMENT_PRIZES.some(([k]) => k === n)) eq[n] = true;
+    else eq[n] = c;   // no menu slot: sent as is
+  }
+  if (!eq.BossHeartContainer) eq.BossHeartContainer = 3;
+  if (settings.name) st.name = String(settings.name);
+  if (settings.notes) st.notes = String(settings.notes);
+  // the Generate tab's choices -> this app's bar
+  const fields = {};
+  const put = (id, v) => { if (v != null && v !== '') fields[id] = String(v); };
+  put('r-mode', settings.mode);
+  put('r-goal', settings.goal);
+  put('r-tower', settings.crystals && settings.crystals.tower);
+  put('r-ganon', settings.crystals && settings.crystals.ganon);
+  put('r-weapons', settings.weapons);
+  put('r-placement', settings.item_placement);
+  put('r-dungeon', settings.dungeon_items);
+  put('r-access', settings.accessibility);
+  put('r-pool', settings.item && settings.item.pool);
+  put('r-func', settings.item && settings.item.functionality);
+  put('r-hints', settings.hints);
+  if (typeof settings.allow_quickswap === 'boolean') put('r-quickswap', settings.allow_quickswap ? 'on' : 'off');
+  return { state: normalizeState(st), fields };
+}

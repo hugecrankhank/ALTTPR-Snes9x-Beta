@@ -50,6 +50,7 @@
   "randomizer/data/base-patch.bin",
   "randomizer/data/config.js",
   "randomizer/data/lang-en.js",
+  "randomizer/data/sahasrahbot-presets.js",
   "randomizer/data/strings.js",
   "randomizer/generate.js",
   "randomizer/icons/heart.svg",

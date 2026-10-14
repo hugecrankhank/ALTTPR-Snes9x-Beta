@@ -84,6 +84,8 @@ export async function snapshotAlttpr() {
 /** Put an alttpr.com preset's settings in the bar and the customizer. */
 export async function applyAlttpr(p) {
   await load();
+  // a built-in from SahasrahBot carries alttpr.com's own request: it turns the customizer on
+  if (p.api) { const r = C.fromApiPreset(p.api); p = { useCustomizer: true, fields: r.fields, custom: r.state }; }
   state = C.normalizeState(p.custom);
   lsSet(LS_STATE, state);
   applyBarFields(p.fields);

@@ -7,6 +7,8 @@
 // in this browser, in the store the Customizer's presets always used (an entry
 // with no `gen` is an alttpr.com one), and can be exported and imported.
 
+import { TRUE_ICE_ROD_HUNT } from './data/sahasrahbot-presets.js';
+
 const LS_PRESETS = 'unified-custom-presets';
 const LS_CURRENT = 'unified-custom-preset';
 const BUILTIN_PREFIX = 'builtin:';
@@ -16,6 +18,11 @@ export const BUILTIN = [
     id: 'onlyadkdf', name: 'OnlyADKDF', gen: 'avianart',
     avian: { preset: 'jem041/onlyadkdf', race: false }, onlyadkd: true,
     note: 'AVIANART preset jem041/onlyadkdf: open, crossed entrances, pot and enemy key drops, random weapons, 7/6 crystals. Turns on the tracker\'s OnlyADKD mode.',
+  },
+  {
+    id: 'trueicerodhunt', name: 'True Ice Rod Hunt', gen: 'alttpr', api: TRUE_ICE_ROD_HUNT, onlyadkd: false,
+    note: 'SahasrahBot preset trueicerodhunt (/alttpr preset preset:trueicerodhunt): you start with every item except the Ice Rod, '
+      + 'and every chest is empty except one Ice Rod. Find it and beat Trinexx (Turtle Rock\'s boss holds the Triforce). Open, keysanity, 0/7 crystals.',
   },
 ];
 
