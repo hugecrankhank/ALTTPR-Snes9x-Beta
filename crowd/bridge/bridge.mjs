@@ -210,7 +210,7 @@ const effectNames = {
   heal_full: 'Full heal', heal_1: '+1 heart', hurt_2: '-2 hearts', hp_1: 'Down to 1 heart',
   magic_full: 'Refill magic', magic_drain: 'Drain magic', rupees_plus: '+50 rupees', rupees_minus: '-50 rupees',
   bombs_plus: '+10 bombs', bombs_none: 'Lose all bombs', arrows_plus: '+10 arrows', arrows_none: 'Lose all arrows',
-  enemy_spawn: 'Extra enemy', ice: 'Ice physics', cucco_storm: 'Cucco attack', invert: 'Inverted D-pad',
+  enemy_spawn: 'Extra enemy', insta_kill: 'Instant death', ice: 'Ice physics', cucco_storm: 'Cucco attack', invert: 'Inverted D-pad',
   no_sword: 'No sword', no_item: 'No Y item', swap_by: 'B and Y swapped', one_hit: 'One-heart mode',
   no_magic: 'Magic locked', sprite_roll: 'Random sprite', sprite_fav: 'Random favourite sprite',
   msu_roll: 'Random MSU pack', seed_roll: 'New seed!',

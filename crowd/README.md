@@ -51,6 +51,7 @@ reloads by itself when you save it.
 | `rupees_plus` / `rupees_minus` | ±50 rupees | | `no_magic` | Magic locked, 30 s |
 | `bombs_plus` / `bombs_none` | +10 / lose all bombs | | `ice` | Ice physics (slippery floors everywhere), 20 s |
 | `enemy_spawn` | Extra enemy (copies one already in the room) | | | |
+| `insta_kill` | Instant death (a bottled fairy still saves you) | | | |
 | `arrows_plus` / `arrows_none` | +10 / lose all arrows | | `cucco_storm` | Cucco attack: angry cuccos fly at Link, 30 s of outdoor time (the clock pauses indoors) |
 
 **App rolls** (use the app's own buttons):

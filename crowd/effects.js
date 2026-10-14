@@ -141,6 +141,11 @@
       input: function (p) { return p & ~B.Y; } },
     swap_by:     { name: 'B and Y swapped', good: false, secs: 20,
       input: function (p) { return swapBits(p, B.B, B.Y); } },
+    // Hands the game a hit worth all of Link's hearts, so it runs its own
+    // death: a bottled fairy still saves him, and the cape / Cane of
+    // Byrna's invincibility still blocks it, exactly like a real hit.
+    insta_kill:  { name: 'Instant death', good: false,
+      apply: function (r) { r[0x373] = r[A.HP]; } },
     enemy_spawn: { name: 'Extra enemy', good: false,
       apply: function (r) { return cloneEnemy(r); } },
 
