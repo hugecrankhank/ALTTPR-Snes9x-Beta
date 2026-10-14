@@ -49,7 +49,7 @@ export default {
         const body = await request.text();
         if (body.length > 16000) return json('{"status":400,"response":{"message":"too big"}}', 400);
         const r = await fetch(`${API}?action=generate` + (preset !== null ? `&preset=${encodeURIComponent(preset)}` : ''), {
-          method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
+          method: 'POST', headers: { 'Content-Type': request.headers.get('Content-Type') || 'application/json' }, body,
         });
         return json(await r.text(), r.status);
       }

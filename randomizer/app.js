@@ -737,7 +737,7 @@ async function playAvian(hash, { preset = null, custom = null, race = false } = 
   const tick = setInterval(show, 1000);
   show();
   try {
-    if (!hash) hash = custom ? await Avian.generateCustom(custom, { race, signal }) : await Avian.generate(preset, { race, signal });
+    if (!hash) hash = custom ? await Avian.generateCustom(custom, { signal }) : await Avian.generate(preset, { race, signal });
     const r = await Avian.seed(hash, {
       signal,
       onWait: (st, tries) => { stage = `AVIANART is making seed ${hash}${tries > 1 ? ` (try ${tries})` : ''}…`; },
@@ -843,7 +843,7 @@ function rollAvian() {
   const src = AvianUi.getSource();
   const race = $('r-avian-race').value === 'yes';
   saveFields();
-  if (src.kind === 'custom') playAvian(null, { custom: AvianUi.customSettings(), race });
+  if (src.kind === 'custom') playAvian(null, { custom: AvianUi.customSettings({ race }), race });
   else playAvian(null, { preset: src.id, race });
 }
 

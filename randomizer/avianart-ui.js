@@ -32,18 +32,21 @@ let openTab = null;
 export const getSource = () => source;
 export const getValues = () => ({ ...values });
 
-/** Your settings by the Door Randomizer's YAML names (every setting). */
-export function customSettings() {
+/**
+ * Your settings the way AVIANART's own customizer sends them (seen in its
+ * request): by the GUI's setting names (worldstate, dungeondoorshuffle…),
+ * every value a string, ticked boxes as "true" and unticked ones left out,
+ * and branch null (its default build).
+ */
+export function customSettings({ race = false } = {}) {
   const out = {};
   ITEMS.forEach((it) => {
-    if (!it.yaml) return;
-    let v = values[it.id];
-    if (it.type !== 'checkbox') {
-      const n = Number(v);
-      if (v !== '' && v !== 'random' && String(n) === v && typeof it.default === 'number') v = n;
-    }
-    out[it.yaml] = v;
+    const v = values[it.id];
+    if (it.type === 'checkbox') { if (v) out[it.id] = 'true'; }
+    else out[it.id] = String(v);
   });
+  if (race) out.race = 'true';
+  out.branch = null;
   return out;
 }
 
