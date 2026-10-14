@@ -1,8 +1,9 @@
 // Seeds from AVIANART (avianart.games), played here.
 //
-// AVIANART runs the Door Randomizer on its own server. It's asked the same
-// way its Discord bot (PedChicken) and SahasrahBot ask it:
-//   POST api.php?action=generate&preset=<preset>   body [{args:{race, namespace}}]
+// AVIANART runs the Door Randomizer on its own server, and rolls seeds from
+// presets only (no settings one by one). It's asked the way SahasrahBot asks it:
+//   GET  api.php?action=presets                     -> { response: { modes: [{prefix, name, type, category, description}] } }
+//   POST api.php?action=generate&preset=<preset>   body [{args:{race}}]   (preset: "crosskeys" or "namespace/preset")
 //        -> { status: 200, response: { hash, status: 'generating' } }
 //   GET  api.php?action=permlink&hash=<hash>        (poll until it's done)
 //        -> { status: 200, response: { status?, message?, bps_t0_p1 | patch, basepatch, spoiler } }
@@ -21,12 +22,171 @@ export const SITE = 'https://avianart.games';
 const RELAY_KEY = 'unified-avianart-relay';
 export const DEFAULT_RELAY = 'https://avianart-relay.hugecrankhank.workers.dev';
 
-// Presets offered in the Randomizer bar. `id` is AVIANART's own preset name,
-// "namespace/preset" for someone's preset (as PedChicken shows it).
+// Players' own presets ("namespace/preset", as PedChicken shows them), offered
+// beside AVIANART's list. AVIANART's list doesn't include these.
 export const PRESETS = [
   { id: 'jem041/onlyadkdf', label: 'OnlyADKDF (jem041)', onlyadkd: true,
     note: 'Open, crossed entrances, pot and enemy key drops, random weapons, 7/6 crystals' },
 ];
+
+// AVIANART's own preset list (api.php?action=presets), as of October 2026:
+// prefix|name|type|category. The live list replaces it when AVIANART answers.
+const SNAPSHOT = `dungeonsfull_hmg|Dungeonsfull HMG|dr|misc
+dungeonssimple_hmg|Dungeonssimple HMG|dr|misc
+adkdb|ADKDB - AD Keydrop Boots|dr|misc
+adkeys|All Dungeons Keysanity|vt|ladder
+ambroz1a|AmbroZ1a Ganon Hunt|doors|misc
+ambroz1adr|WJB's AmbroZ1a Ganon Hunt|doors|testing
+ambroz1agt|AmbroZ1a Slow Ganon Hunt|doors|testing
+antil|Anti-Logic|vt|misc
+antiv|ANTIvrosia|vt|tournament2022
+bees|Bee Weapon|doors|kara
+bomberman|Bomberman|doors|kara
+bunday|Bunday|dr|misc
+buzzpriest|Buzzpriest|doors|kisspriest
+cabookey|cabookey|dr|misc
+casualboots|Casual Boots|vt|misc
+casualboots_ladder|Casual Boots (Ladder)|vt|ladder
+casualbooty|Definitely Casboots|dr|misc
+casualopen|Casual Open|vt|mt
+completionist_keysanity|Completionist Keysanity|dr|misc
+crisscross|crisscross|dr|misc
+crisscross_zw|crisscross_zw|dr|misc
+crosshunt|Crosshunt|doors|malmo
+crosshunt9|Crosshunt9|doors|malmo
+crosskeys|Crosskeys|dr|vtp
+ftkh|Fake True Key Hunt|doors|soz
+gadk|Actually Good AD Keys|vt|wizzrobe
+hmg|Hybrid Major Glitches|vt|ladder
+invc|Invertacrismizer|vt|tournament2022
+invc2023|Invertacrismiser 2023|doors|tournament2023
+invc2023hmg|Invertacrismiser 2023 (HMG)|doors|tournament2023g
+invc2023nl|Invertacrismiser 2023 (NoLogic)|doors|tournament2023g
+invc2023owg|Invertacrismiser 2023 (OWG)|doors|tournament2023g
+inverted_adkeys|Inverted AD Keys|vt|ladder
+inverted_adkeys_dr|Inverted ADKeys|doors|ladder
+invrosia|Invrosia|vt|ladder
+iter|iS tHiS eVeN rAnDoMiZeD?|vt|tournament2022
+keysanity|Keysanity|dr|misc
+kpd|Kekpriest|doors|kisspriest
+kpdd|Kekpriest (Decoupled Doors)|doors|kisspriest
+kpdlite|Kekpriest (Annoying Traps Removed)|doors|kisspriest
+kpdlottery|Kekpriest Lottery|doors|kisspriest
+ladderbeginnerdoors|Ladder Beginner Doors|doors|ladder
+ladderintermediatedoors|Ladder Intermediate Doors|doors|ladder
+ldi|Ludicrous Dungeon Items|vt|wizzrobe
+league_bosshunt|League Bosshunt|dr|misc
+leaguebeginnerweek1|DR Beginner Week 1 & 2|doors|doorsleague
+leaguebeginnerweek3|DR Beginner Week 3+|doors|doorsleague
+lightspeed|Lightspeed w/ Crossed Doors|dr|misc
+ludicrouskeys|Ludicrous Keys|vt|wizzrobe
+ludicrousspeed|Ludicrous Speed|vt|ladder
+mixed_turnier|Mixed Overworld Shops Big Keys|dr|misc
+mmmmavid23|MMMM|doors|tournament2023
+nologic_rods|nologic_rods|dr|misc
+open|Open|vt|mt
+openboots_enemizer|Open Boots Enemizer|dr|misc
+owg_assured|Overworld Glitches (Assured Sword)|vt|ladder
+owg_mixed_tile_swap|OWG Mixed Tile Swap|dr|misc
+owrfestivetest|Testing|doors|testing
+pab|Pots and Bones|doors|tournament2023
+pab1|Pots and Bones|doors|tournament2023
+pabhmg|Pots and Bones (HMG)|doors|tournament2023g
+pabnl|Pots and Bones (NoLogic)|doors|tournament2023g
+pabowg|Pots and Bones (OWG)|doors|tournament2023g
+pabprize|PB&J|doors|testing
+pabs|Pots, Shops, and Bones|doors|testing
+polarm|Polar Mixed|dr|misc
+retrance_bow|Retrance no rupee bow|dr|misc
+shadowrush|Shadow Rush|vt|misc
+spbj|Smooth PB&J|dr|misc
+spoiler_keysanity|Spoiler Keysanity|dr|testing
+standard|Standard|vt|mt
+standardinverted|Standard 'Inverted'|doors|overworld
+standardinverteddev|Standard 'Inverted' [OWRDev]|doors|overworld
+stdinvboots|Standard 'Inverted' Boots|doors|misc
+swapkeys|Swapkeys|dr|misc
+swapkeysdev|Swapkeys [OWRDev]|dr|misc
+tkp|True Kekpriest|doors|kisspriest
+tkpv|True Kekpriest (Enemy Drops)|doors|kisspriest
+tph|True Pot Hunt|doors|tournament2022
+tph2023|True Pot Hunt 2023|doors|tournament2023
+tph2023hmg|True Pot Hunt 2023 (HMG)|doors|tournament2023g
+tph2023nl|True Pot Hunt 2023 (NoLogic)|doors|tournament2023g
+tph2023owg|True Pot Hunt 2023 (OWG)|doors|tournament2023g
+tphdoors|True Pot Hunt (w/ Lvl 3 Doors)|doors|tph
+tphenemizer|True Pot Hunt (w/ Enemizer)|doors|tph
+tphfull|Truest Pot Hunt (420/420 Triforce Pieces)|doors|tph
+tphlite|True Pot Hunt 2023 (Lite)|doors|tph
+tphmirror|True Pot Hunt w/ Starting Mirror|doors|tph
+tphone|True Pot Hunt 2023 (One)|doors|tph
+tphowr|True Pot Hunt (Overworld Randomized)|doors|tph
+tribomb|Trinity Bomberman|dr|misc
+trinimizer|Trinimizer|dr|testing
+trinity|Trinity|doors|tournament2023
+trinityhmg|Trinity (HMG)|doors|tournament2023g
+trinitynl|Trinity (NoLogic)|doors|tournament2023g
+trinityowg|Trinity (OWG)|doors|tournament2023g
+witt|wiTt|vt|tournament2022`;
+
+const snapshotModes = () => SNAPSHOT.split('\n').map((l) => {
+  const [prefix, name, type, category] = l.split('|');
+  return { prefix, name, type, category, description: null };
+});
+
+// AVIANART's category codes, as headings (in this order; others after, A-Z)
+const CATEGORIES = [
+  ['mt', 'Main'], ['ladder', 'Ladder'], ['vtp', 'Crosskeys'], ['doorsleague', 'Doors League'],
+  ['tournament2023', 'Tournament 2023'], ['tournament2023g', 'Tournament 2023 (glitched)'],
+  ['tournament2022', 'Tournament 2022'], ['tph', 'True Pot Hunt'], ['kisspriest', 'Kekpriest'],
+  ['malmo', 'Malmo'], ['overworld', 'Overworld'], ['wizzrobe', 'Wizzrobe'], ['kara', 'Kara'], ['soz', 'SoZ'],
+  ['misc', 'Misc'], ['testing', 'Testing'],
+];
+export function categoryLabel(c) {
+  const k = CATEGORIES.find(([id]) => id === c);
+  return k ? k[1] : String(c || 'Other').replace(/^./, (x) => x.toUpperCase());
+}
+const catOrder = (c) => { const i = CATEGORIES.findIndex(([id]) => id === c); return i < 0 ? 50 : i; };
+export const TYPE_LABEL = { vt: 'item randomizer', dr: 'Door Randomizer', doors: 'Door Randomizer' };
+
+/** AVIANART's presets in groups: [{ category, label, modes: [...] }]. */
+export function groupModes(modes) {
+  const by = new Map();
+  for (const m of modes) {
+    if (!m || !m.prefix) continue;
+    const c = m.category || 'other';
+    if (!by.has(c)) by.set(c, []);
+    by.get(c).push(m);
+  }
+  return [...by.entries()]
+    .sort((a, b) => catOrder(a[0]) - catOrder(b[0]) || a[0].localeCompare(b[0]))
+    .map(([category, list]) => ({
+      category, label: categoryLabel(category),
+      modes: list.sort((a, b) => String(a.name).localeCompare(String(b.name))),
+    }));
+}
+
+const LIST_KEY = 'unified-avianart-presets';
+/** The list kept from last time (or the built-in copy), right away. */
+export function cachedModes() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LIST_KEY) || 'null');
+    if (v && Array.isArray(v.modes) && v.modes.length) return v.modes;
+  } catch (e) {}
+  return snapshotModes();
+}
+/** AVIANART's current list (kept for next time). */
+export async function fetchModes({ signal } = {}) {
+  const j = await call('action=presets', {}, signal);
+  const modes = j && j.response && j.response.modes;
+  if (!Array.isArray(modes) || !modes.length) throw new Error('AVIANART didn\'t send its preset list.');
+  const clean = modes.filter((m) => m && typeof m.prefix === 'string').map((m) => ({
+    prefix: m.prefix, name: String(m.name || m.prefix), type: m.type || '', category: m.category || 'other',
+    description: m.description || null,
+  }));
+  try { localStorage.setItem(LIST_KEY, JSON.stringify({ at: Date.now(), modes: clean })); } catch (e) {}
+  return clean;
+}
 
 export function ownRelay() {
   try { return (localStorage.getItem(RELAY_KEY) || '').trim().replace(/\/+$/, ''); } catch (e) { return ''; }
@@ -90,16 +250,22 @@ export async function generate(presetId, { race = false, signal } = {}) {
   if (!/^[a-z0-9_.-]+$/.test(preset) || (namespace && !/^[a-z0-9_.-]+$/.test(namespace))) {
     throw new Error('That isn\'t an AVIANART preset name (like jem041/onlyadkdf).');
   }
-  const args = { race: !!race };
-  if (namespace) args.namespace = namespace;
-  const j = await call(`action=generate&preset=${encodeURIComponent(preset)}`, {
+  const ask = (name, args) => call(`action=generate&preset=${encodeURIComponent(name)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify([{ args }]),
   }, signal);
-  const hash = j && j.response && j.response.hash;
-  if (j.status !== 200 || !hash) {
-    throw new Error('AVIANART didn\'t roll that preset' + (j.response && j.response.message ? `: ${j.response.message}` : '.'));
+  const hashOf = (j) => (j && j.status === 200 && j.response && j.response.hash) || null;
+  // the way SahasrahBot asks for someone's preset: "namespace/preset" as the name
+  let j = await ask(namespace ? `${namespace}/${preset}` : preset, { race: !!race });
+  let hash = hashOf(j);
+  // and the other way, with the namespace on its own
+  if (!hash && namespace) {
+    const j2 = await ask(preset, { race: !!race, namespace }).catch(() => null);
+    if (hashOf(j2)) { j = j2; hash = hashOf(j2); }
+  }
+  if (!hash) {
+    throw new Error('AVIANART didn\'t roll that preset' + (j && j.response && j.response.message ? `: ${j.response.message}` : '.'));
   }
   return String(hash);
 }
@@ -227,6 +393,5 @@ export function trackerGaps(m) {
 
 /** The race flag as AVIANART reports it. */
 export function isRace(m) {
-  const v = m.race;
-  return v !== undefined && v !== false && v !== 0 && v !== 'No' && v !== 'no';
+  return on(m.race);
 }

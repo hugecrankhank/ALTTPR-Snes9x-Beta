@@ -1,12 +1,13 @@
 // The Customizer fold-out in the Randomizer bar (alttpr.com generator only):
-// alttpr.com's Customizer menus, each its own dropdown, plus presets.
+// alttpr.com's Customizer menus, each its own dropdown. Presets are in
+// saved-presets.js (the bar's Saved presets field).
+
+import { edited } from './saved-presets.js';
 // The lists come from the generator (custom.js), loaded the first time the
 // fold-out opens or a customized seed is made.
 
 const LS_STATE = 'unified-custom-state';
 const LS_ON = 'unified-custom-on';
-const LS_PRESETS = 'unified-custom-presets';
-const LS_PRESET = 'unified-custom-preset';
 // the bar's settings a preset keeps (the generator choice itself is not one)
 const BAR_FIELDS = ['r-mode', 'r-goal', 'r-tower', 'r-ganon', 'r-weapons', 'r-placement', 'r-dungeon', 'r-access',
   'r-pool', 'r-func', 'r-hints', 'r-heartbeep', 'r-menuspeed', 'r-quickswap'];
@@ -37,7 +38,7 @@ async function load() {
 function save() {
   if (!state) return;
   if (!lsSet(LS_STATE, state)) say('Couldn\'t save the customizer settings in this browser (storage is full or blocked).', 'bad');
-  if (lsGet(LS_PRESET, '')) { lsSet(LS_PRESET, ''); paintPresets(); }   // edited: no longer exactly the preset
+  edited();   // no longer exactly the preset
 }
 
 export const customizerOn = () => !!$('r-custom-on') && $('r-custom-on').checked;
@@ -52,7 +53,7 @@ export async function customRequest(main) {
   };
 }
 
-// ── presets ──────────────────────────────────────────────────────────────────
+// ── presets (kept in saved-presets.js; these are its alttpr.com side) ─────────
 function barFields() {
   const o = {};
   BAR_FIELDS.forEach((id) => { if ($(id)) o[id] = $(id).value; });
@@ -65,111 +66,37 @@ function applyBarFields(fields) {
     if (el.value !== v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }
   }
 }
-function presets() { const p = lsGet(LS_PRESETS, {}); return p && typeof p === 'object' ? p : {}; }
-
-function paintPresets() {
-  const sel = $('r-custom-preset');
-  if (!sel) return;
-  const cur = lsGet(LS_PRESET, '');
-  const names = Object.keys(presets()).sort((a, b) => a.localeCompare(b));
-  sel.innerHTML = `<option value="">${names.length ? 'Choose a preset…' : 'No presets saved yet'}</option>`
-    + names.map((n) => `<option value="${esc(n)}"${n === cur ? ' selected' : ''}>${esc(n)}</option>`).join('');
-  $('r-custom-del').disabled = !cur;
-  paintBadge();
-}
 
 function paintBadge() {
   const b = $('r-custom-badge');
   if (!b) return;
-  const cur = lsGet(LS_PRESET, '');
-  b.textContent = customizerOn() ? (cur ? `On · ${cur}` : 'On') : 'Off';
+  b.textContent = customizerOn() ? 'On' : 'Off';
   b.classList.toggle('on', customizerOn());
   document.body.classList.toggle('custom-on', customizerOn());
 }
 
-async function applyPreset(p, name) {
+/** The bar's alttpr.com settings and the customizer, for a preset. */
+export async function snapshotAlttpr() {
+  await load();
+  return { useCustomizer: customizerOn(), fields: barFields(), custom: state };
+}
+
+/** Put an alttpr.com preset's settings in the bar and the customizer. */
+export async function applyAlttpr(p) {
   await load();
   state = C.normalizeState(p.custom);
   lsSet(LS_STATE, state);
   applyBarFields(p.fields);
   if (typeof p.useCustomizer === 'boolean') { $('r-custom-on').checked = p.useCustomizer; lsSet(LS_ON, p.useCustomizer); }
-  lsSet(LS_PRESET, name || '');
   renderAll();
-  paintPresets();
+  paintBadge();
 }
 
-function savePreset() {
-  const input = $('r-custom-name');
-  const name = input.value.trim().slice(0, 60);
-  if (!name) { say('Type a name for the preset first.', 'bad'); input.focus(); return; }
-  const all = presets();
-  const over = name in all;
-  all[name] = { v: 1, savedAt: new Date().toISOString(), useCustomizer: customizerOn(), fields: barFields(), custom: state };
-  if (!lsSet(LS_PRESETS, all)) { say('Couldn\'t save the preset: this browser\'s storage is full or blocked.', 'bad'); return; }
-  lsSet(LS_PRESET, name);
-  input.value = '';
-  paintPresets();
-  say(`${over ? 'Updated' : 'Saved'} preset "${name}". Pick it from Presets any time to roll seeds with these settings.`, 'ok');
-}
-
-function deletePreset() {
-  const name = $('r-custom-preset').value;
-  if (!name) return;
-  if (!window.confirm(`Delete the preset "${name}"?`)) return;
-  const all = presets();
-  delete all[name];
-  lsSet(LS_PRESETS, all);
-  lsSet(LS_PRESET, '');
-  paintPresets();
-  say(`Deleted preset "${name}".`, 'ok');
-}
-
-function downloadJson(obj, name) {
-  const url = URL.createObjectURL(new Blob([JSON.stringify(obj, null, 1)], { type: 'application/json' }));
-  const a = document.createElement('a');
-  a.href = url; a.download = name;
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 5000);
-}
-
-function exportPresets() {
-  const name = $('r-custom-preset').value;
-  const all = presets();
-  if (name && all[name]) {
-    downloadJson({ alttprUnifiedPresets: 1, presets: { [name]: all[name] } }, `${name.replace(/[^\w\- ]+/g, '_')}-preset.json`);
-  } else {
-    const cur = { v: 1, savedAt: new Date().toISOString(), useCustomizer: customizerOn(), fields: barFields(), custom: state };
-    downloadJson({ alttprUnifiedPresets: 1, presets: { ...all, 'Current settings': cur } }, 'alttpr-unified-presets.json');
-  }
-}
-
-async function importFile(file) {
+/** A Save file from alttpr.com's Customizer: { fields, custom }, or null. */
+export async function fromSiteSave(json) {
   await load();
-  let json;
-  try { json = JSON.parse(await file.text()); } catch (e) { say('That file isn\'t a preset or customizer settings file.', 'bad'); return; }
-  const base = file.name.replace(/(-settings|-preset)?\.json$/i, '') || 'Imported';
-  if (json && json.alttprUnifiedPresets && json.presets && typeof json.presets === 'object') {
-    const all = presets();
-    const names = Object.keys(json.presets).filter((n) => json.presets[n] && json.presets[n].custom);
-    names.forEach((n) => { all[n] = json.presets[n]; });
-    lsSet(LS_PRESETS, all);
-    if (names.length === 1) await applyPreset(all[names[0]], names[0]);
-    else paintPresets();
-    say(names.length ? `Imported ${names.length} preset${names.length === 1 ? '' : 's'}${names.length === 1 ? ` ("${names[0]}") and switched to it` : ''}.` : 'No presets in that file.', names.length ? 'ok' : 'bad');
-    return;
-  }
-  const fromSite = C.fromAlttprSave(json);
-  if (fromSite) {
-    let name = base, i = 2;
-    const all = presets();
-    while (all[name]) name = `${base} (${i++})`;
-    all[name] = { v: 1, savedAt: new Date().toISOString(), useCustomizer: true, fields: fromSite.fields, custom: fromSite.state };
-    lsSet(LS_PRESETS, all);
-    await applyPreset(all[name], name);
-    say(`Imported alttpr.com customizer settings as the preset "${name}".`, 'ok');
-    return;
-  }
-  say('That file isn\'t a preset or an alttpr.com customizer save file.', 'bad');
+  const r = C.fromAlttprSave(json);
+  return r ? { fields: r.fields, custom: r.state } : null;
 }
 
 async function resetAll() {
@@ -177,9 +104,9 @@ async function resetAll() {
   await load();
   state = C.defaultState();
   lsSet(LS_STATE, state);
-  lsSet(LS_PRESET, '');
+  edited();
   renderAll();
-  paintPresets();
+  paintBadge();
   say('Customizer reset to the defaults.', 'ok');
 }
 
@@ -561,29 +488,7 @@ export function initCustomizer({ status }) {
     if (on.checked) load().catch(() => {});
     say(on.checked ? 'Customizer on: Generate makes a seed with these menus\' settings.' : 'Customizer off: Generate makes a normal seed.', 'ok');
   });
-  $('r-custom-preset').addEventListener('change', async (e) => {
-    const name = e.target.value;
-    $('r-custom-del').disabled = !name;
-    if (!name) return;
-    const p = presets()[name];
-    if (!p) return;
-    await applyPreset(p, name);
-    say(`Preset "${name}" loaded${p.useCustomizer ? ' (customizer on)' : ''}. Press Generate to roll a seed with it.`, 'ok');
-  });
-  $('r-custom-save').addEventListener('click', savePreset);
-  $('r-custom-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); savePreset(); } });
-  $('r-custom-del').addEventListener('click', deletePreset);
-  $('r-custom-export').addEventListener('click', async () => { await load(); exportPresets(); });
-  $('r-custom-import').addEventListener('change', async (e) => {
-    const f = e.target.files && e.target.files[0];
-    e.target.value = '';
-    if (f) await importFile(f);
-  });
   $('r-custom-reset').addEventListener('click', resetAll);
-  // changing a bar setting means the selections no longer match the preset exactly
-  BAR_FIELDS.forEach((id) => $(id) && $(id).addEventListener('change', (e) => {
-    if (e.isTrusted && lsGet(LS_PRESET, '')) { lsSet(LS_PRESET, ''); paintPresets(); }
-  }));
-  paintPresets();
+  paintBadge();
   if (on.checked) load().catch(() => {});
 }

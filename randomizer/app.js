@@ -11,7 +11,8 @@ import { relayUrl, ownRelay, setRelayUrl, DEFAULT_RELAY, alttprId, fetchAlttprSe
 import * as Kara from './kara/index.js';
 import * as Avian from './avianart.js';
 import { buildUi as buildKaraUi } from './kara/ui.js';
-import { initCustomizer, customizerOn, customRequest } from './custom-ui.js';
+import { initCustomizer, customizerOn, customRequest, snapshotAlttpr, applyAlttpr, fromSiteSave } from './custom-ui.js';
+import * as Saved from './saved-presets.js';
 
 const msu = new MsuPlayer();
 
@@ -236,11 +237,11 @@ function status(msg, kind = '') {
 
 async function refreshBaseStatus() {
   const has = !!(await kvGet('base-jp10').catch(() => null));
-  $('r-base-label').textContent = has ? 'Base ROM ✓' : 'Base ROM…';
+  $('r-base-text').textContent = has ? 'Base ROM ✓' : 'Base ROM…';
   $('r-base-label').classList.toggle('ok', has);
   $('r-base-label').title = has
-    ? 'Your Japanese 1.0 ROM is saved in this browser. Click to replace it.'
-    : 'Choose your Japanese 1.0 ALttP ROM (stays on this device)';
+    ? 'Your Japanese 1.0 ROM is saved in this browser: every generator makes its seeds from it. Click to replace it.'
+    : 'Choose your Japanese 1.0 ALttP ROM: every generator makes its seeds from it (it stays on this device)';
   return has;
 }
 
@@ -390,6 +391,7 @@ const TRACKER_DI = { standard: 'standard', mc: 'mapcompass', mcs: 'mapcompasskey
 
 async function generateAndPlay() {
   if (isKara()) return generateKara();
+  if (isAvian()) return rollAvian();
   if (msu.count) msu.unlock();
   const btn = $('r-generate');
   if (btn.disabled) return;
@@ -478,6 +480,8 @@ async function generateAndPlay() {
 // ── Kara's branch, generated here ────────────────────────────────────────────
 let karaUi = null;
 const isKara = () => $('r-gen').value === 'kara';
+const isAvian = () => $('r-gen').value === 'avianart';
+const GEN_NAME = { alttpr: 'alttpr.com', kara: 'Kara\'s branch', avianart: 'AVIANART' };
 
 function setGen(g) {
   $('r-gen').value = g;
@@ -486,7 +490,9 @@ function setGen(g) {
 function applyGen() {
   const kara = isKara();
   document.body.classList.toggle('gen-kara', kara);
-  $('r-gen-name').textContent = kara ? ' · Kara\'s branch' : ' · alttpr.com';
+  document.body.classList.toggle('gen-avian', isAvian());
+  $('r-gen-name').textContent = ' · ' + (GEN_NAME[$('r-gen').value] || 'alttpr.com');
+  if (isAvian()) refreshAvianList();
   document.querySelectorAll('#r-gen-menu [data-gen]').forEach((b) => b.setAttribute('aria-checked', String(b.dataset.gen === $('r-gen').value)));
   // start Python in the background, so the first Kara seed is quicker
   clearTimeout(applyGen.t);
@@ -721,7 +727,6 @@ async function playAvian(hash, { preset = null, race = false } = {}) {
     return;
   }
   btn.disabled = true;
-  const avBtn = $('r-avian-go'); if (avBtn) avBtn.disabled = true;
   $('r-stop').hidden = false;
   karaAbort = new AbortController();
   const signal = karaAbort.signal;
@@ -771,39 +776,83 @@ async function playAvian(hash, { preset = null, race = false } = {}) {
       console.error(e);
       status(String(e.message || e), 'bad');
       if (e.needsRelay) { const d = $('rando-bar').querySelector('details#r-rom-more'); if (d) d.open = true; $('r-avian-relay').focus(); }
+      if (!hash && /didn't roll/.test(String(e.message))) status(String(e.message) + ' Check the preset name.', 'bad');
     }
   } finally {
     clearInterval(tick);
     karaAbort = null;
     btn.disabled = false;
-    if (avBtn) avBtn.disabled = false;
     $('r-stop').hidden = true;
   }
 }
 
-// The header's Reroll: after an AVIANART seed it rolls that seed's preset again.
-function avianRerollPreset() {
-  if (!last || !last.avian) return null;
-  if (last.avianPreset) return last.avianPreset;
+// ── AVIANART's settings in the bar: its preset list ──────────────────────────
+const AV_OTHER = '__other';
+function avianChoice() {
   const v = $('r-avian-preset').value;
-  return v === 'other' ? ($('r-avian-custom').value.trim() || null) : v;
+  return v === AV_OTHER ? $('r-avian-custom').value.trim().toLowerCase() : v;
 }
-window.UnifiedAvian = {
-  active: () => !!avianRerollPreset(),
-  preset: avianRerollPreset,
-  reroll: () => {
-    const p = avianRerollPreset();
-    if (p) playAvian(null, { preset: p, race: !!last.race });
-  },
-};
+function setAvianChoice(id) {
+  id = String(id || '').trim().toLowerCase();
+  const sel = $('r-avian-preset');
+  if ([...sel.options].some((o) => o.value === id)) sel.value = id;
+  else { sel.value = AV_OTHER; $('r-avian-custom').value = id; }
+  avianChanged(false);
+}
+let avianModes = null;
+function paintAvianList(modes) {
+  avianModes = modes;
+  const sel = $('r-avian-preset');
+  let was = 'crosskeys';
+  try { was = sel.options.length ? avianChoice() : (localStorage.getItem('unified-avianart-preset') || 'crosskeys'); } catch (e) {}
+  sel.innerHTML = '';
+  const group = (label, items) => {
+    const g = document.createElement('optgroup');
+    g.label = label;
+    items.forEach(([value, text, title]) => {
+      const o = document.createElement('option');
+      o.value = value; o.textContent = text; if (title) o.title = title;
+      g.appendChild(o);
+    });
+    sel.appendChild(g);
+  };
+  Avian.groupModes(modes).forEach((g) => group(g.label, g.modes.map((m) => [m.prefix, m.name, m.description || ''])));
+  group('Players\' presets', [
+    ...Avian.PRESETS.map((p) => [p.id, p.label, p.note || '']),
+    [AV_OTHER, 'Someone else\'s preset…', 'Type a namespace/preset name, as PedChicken shows it'],
+  ]);
+  setAvianChoice(was);
+}
+function avianChanged(save = true) {
+  const sel = $('r-avian-preset');
+  const other = sel.value === AV_OTHER;
+  $('r-avian-custom').hidden = !other;
+  const id = avianChoice();
+  const m = (avianModes || []).find((x) => x.prefix === id);
+  const own = Avian.PRESETS.find((p) => p.id === id);
+  $('r-avian-desc').textContent = other ? 'Someone\'s preset: namespace/preset, as PedChicken shows it (like jem041/onlyadkdf).'
+    : own ? own.note
+      : m ? [m.description && m.description !== m.name ? m.description : '', Avian.TYPE_LABEL[m.type] || ''].filter(Boolean).join(' · ')
+        : '';
+  if (save) {
+    try {
+      localStorage.setItem('unified-avianart-preset', id || '');
+      localStorage.setItem('unified-avianart-race', $('r-avian-race').value);
+    } catch (e) {}
+  }
+}
+let avianFetched = false;
+function refreshAvianList() {
+  if (avianFetched) return;
+  avianFetched = true;
+  Avian.fetchModes().then(paintAvianList).catch((e) => { avianFetched = false; console.warn('[avianart] preset list:', e); });
+}
 
 function rollAvian() {
-  const sel = $('r-avian-preset');
-  let p = sel.value;
-  if (p === 'other') p = $('r-avian-custom').value.trim();
+  const p = avianChoice();
   if (!p) { status('Type an AVIANART preset name, like jem041/onlyadkdf.', 'bad'); $('r-avian-custom').focus(); return; }
-  if (window.EJS_emulator && !confirm(`Roll a new AVIANART seed (${p})?\n\nThe current game will be closed.`)) return;
-  playAvian(null, { preset: p, race: $('r-avian-race').checked });
+  saveFields();
+  playAvian(null, { preset: p, race: $('r-avian-race').value === 'yes' });
 }
 
 // ── "Load a seed": paste a link or a number ──────────────────────────────────
@@ -812,13 +861,13 @@ function rollAvian() {
 // settings. Then it plays.
 function loadPasted(text) {
   text = String(text || '').trim();
-  if (!text) { status('Paste a seed link, an alttpr.com or AVIANART link, or a seed number.', 'bad'); return false; }
+  if (!text) { status('Paste a seed link: alttpr.com, alttpr.gwaa.kiwi or avianart.games.', 'bad'); return false; }
   let url = null;
   try { url = new URL(text); } catch (e) {}
   const gk = Kara.gwaaId(text);
   if (gk) { setGen('kara'); playGwaa(gk); return true; }
-  const av = Avian.avianId(text);
-  if (av) { playAvian(av); return true; }
+  const av = Avian.avianId(text) || (isAvian() && /^[A-Za-z0-9]{4,32}$/.test(text) ? text : null);
+  if (av) { setGen('avianart'); playAvian(av); return true; }
   if (url && url.searchParams.get('gen') === 'kara') {
     const k = Kara.readLink(url.search);
     if (!k) { status('That link doesn\'t have a seed in it.', 'bad'); return false; }
@@ -844,7 +893,7 @@ function loadPasted(text) {
     generateAndPlay();
     return true;
   }
-  status('That isn\'t a seed link, an alttpr.com seed, or a seed number.', 'bad');
+  status('That isn\'t a seed link from alttpr.com, alttpr.gwaa.kiwi or avianart.games (or a seed number).', 'bad');
   return false;
 }
 
@@ -1698,27 +1747,13 @@ export function init() {
     $('r-relay').value = ownRelay();
     status(ownRelay() ? 'Using your own relay for alttpr.com seeds.' : 'Using the built-in relay for alttpr.com seeds.', 'ok');
   });
-  // AVIANART: presets, roll button and its relay
-  const avSel = $('r-avian-preset');
-  Avian.PRESETS.forEach((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.label; o.title = p.note || ''; avSel.insertBefore(o, avSel.lastElementChild); });
-  avSel.selectedIndex = 0;
-  try { const v = localStorage.getItem('unified-avianart-preset'); if (v && [...avSel.options].some((o) => o.value === v)) avSel.value = v; } catch (e) {}
-  try { $('r-avian-custom').value = localStorage.getItem('unified-avianart-custom') || ''; } catch (e) {}
-  const avOther = () => { $('r-avian-custom').hidden = avSel.value !== 'other'; };
-  avOther();
-  avSel.addEventListener('change', () => { avOther(); try { localStorage.setItem('unified-avianart-preset', avSel.value); } catch (e) {} });
-  $('r-avian-custom').addEventListener('change', () => { try { localStorage.setItem('unified-avianart-custom', $('r-avian-custom').value.trim()); } catch (e) {} });
-  $('r-avian-go').addEventListener('click', rollAvian);
-  const avLoad = () => {
-    const t = $('r-avian-load').value.trim();
-    const h = Avian.avianId(t) || (/^[A-Za-z0-9]{4,32}$/.test(t) ? t : null);
-    if (!h) { status('Paste an AVIANART permalink (avianart.games/perm/…) or its hash.', 'bad'); return; }
-    if (window.EJS_emulator && !confirm(`Load AVIANART seed ${h}?\n\nThe current game will be closed.`)) return;
-    $('r-avian-load').value = '';
-    playAvian(h);
-  };
-  $('r-avian-load-go').addEventListener('click', avLoad);
-  $('r-avian-load').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); avLoad(); } });
+  // AVIANART: its preset list (kept from last time, then fetched fresh), race and relay
+  try { $('r-avian-race').value = localStorage.getItem('unified-avianart-race') === 'yes' ? 'yes' : 'no'; } catch (e) {}
+  paintAvianList(Avian.cachedModes());
+  $('r-avian-preset').addEventListener('change', () => { avianChanged(); if ($('r-avian-preset').value === AV_OTHER) $('r-avian-custom').focus(); });
+  $('r-avian-custom').addEventListener('change', () => avianChanged());
+  $('r-avian-custom').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); avianChanged(); generateAndPlay(); } });
+  $('r-avian-race').addEventListener('change', () => avianChanged());
   $('r-avian-relay').placeholder = Avian.DEFAULT_RELAY.replace(/^https:\/\//, '');
   $('r-avian-relay').value = Avian.ownRelay();
   $('r-avian-relay').addEventListener('change', () => {
@@ -1732,6 +1767,44 @@ export function init() {
   karaUi = buildKaraUi($('r-kara'), $('r-kara-more-body'));
   loadFields();
   initCustomizer({ status });
+  // Saved presets: each one switches to its generator and sets it up
+  const romFields = () => ({ 'r-heartbeep': $('r-heartbeep').value, 'r-quickswap': $('r-quickswap').value });
+  const setRomFields = (f) => Object.entries(f || {}).forEach(([id, v]) => {
+    const el = $(id);
+    if (el && [...el.options].some((o) => o.value === v) && el.value !== v) { el.value = v; el.dispatchEvent(new Event('change', { bubbles: true })); }
+  });
+  Saved.init({
+    status,
+    gen: () => $('r-gen').value,
+    switchGen: (g) => {
+      if ($('r-gen').value !== g) { $('r-gen').value = g; $('r-gen').dispatchEvent(new Event('change')); }
+    },
+    fromSiteSave,
+    handlers: {
+      alttpr: { snapshot: snapshotAlttpr, apply: applyAlttpr },
+      kara: {
+        snapshot: async () => ({ kara: karaUi.get(), rom: romFields() }),
+        apply: async (p) => { if (p.kara) karaUi.set(p.kara); setRomFields(p.rom); },
+      },
+      avianart: {
+        snapshot: async () => ({ avian: { preset: avianChoice(), race: $('r-avian-race').value === 'yes' }, rom: romFields() }),
+        apply: async (p) => {
+          const a = p.avian || {};
+          setAvianChoice(a.preset || 'crosskeys');
+          $('r-avian-race').value = a.race ? 'yes' : 'no';
+          avianChanged();
+          setRomFields(p.rom);
+        },
+      },
+    },
+  });
+  // a setting changed by hand: the bar no longer matches the chosen preset
+  $('rando-bar').addEventListener('change', (e) => {
+    const t = e.target;
+    if (!e.isTrusted || !t || !t.closest) return;
+    if (t.closest('#r-saved-field, .paste-field, .sprite-field, #r-sprite-sheet') || t.type === 'file' || /relay$/.test(t.id || '')) return;
+    Saved.edited();
+  });
   FIELDS.forEach((id) => $(id) && $(id).addEventListener('change', saveFields));
   applyGen();
   $('r-gen').addEventListener('change', () => {
@@ -1766,6 +1839,7 @@ export function init() {
     }
     $('r-gen').value = b.dataset.gen;
     $('r-gen').dispatchEvent(new Event('change'));
+    Saved.edited();
   }));
   document.addEventListener('pointerdown', (e) => { if (!genMenu.hidden && !e.target.closest('#rando-split')) menu(false); }, true);
   // a click in a tracker or the game (their own frames) doesn't reach this page
@@ -1784,7 +1858,7 @@ export function init() {
     if (!f) return;
     try {
       await setBaseRom(f);
-      status('Base ROM saved. Pick your settings and press Generate.', 'ok');
+      status('Base ROM saved. New seeds are made from it: pick a preset or settings and press Generate & Play.', 'ok');
     } catch (e) {
       status(String(e.message || e), 'bad');
     }

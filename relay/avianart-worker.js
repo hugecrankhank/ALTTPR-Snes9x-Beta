@@ -2,7 +2,8 @@
 // avianart.games, in case AVIANART doesn't allow other sites to read it (CORS).
 //
 // It only passes on what the app needs:
-//   POST /api.php?action=generate&preset=<preset>   roll a seed (a preset name only)
+//   GET  /api.php?action=presets                     AVIANART's preset list
+//   POST /api.php?action=generate&preset=<preset>   roll a seed (a preset name, or namespace/preset)
 //   GET  /api.php?action=permlink&hash=<hash>        a seed (and its progress)
 //   GET  /file?u=<url>                               a seed's base patch (.bps)
 // and only for the pages listed in ALLOWED. Finished seeds are kept for a day.
@@ -42,12 +43,16 @@ export default {
       const action = url.searchParams.get('action');
       if (action === 'generate' && request.method === 'POST') {
         const preset = url.searchParams.get('preset') || '';
-        if (!/^[a-z0-9_.-]{1,64}$/i.test(preset)) return json('{"status":400,"response":{"message":"bad preset"}}', 400);
+        if (!/^[a-z0-9_.-]{1,64}(\/[a-z0-9_.-]{1,64})?$/i.test(preset)) return json('{"status":400,"response":{"message":"bad preset"}}', 400);
         const body = await request.text();
         if (body.length > 2000) return json('{"status":400,"response":{"message":"too big"}}', 400);
         const r = await fetch(`${API}?action=generate&preset=${encodeURIComponent(preset)}`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body,
         });
+        return json(await r.text(), r.status);
+      }
+      if (action === 'presets' && request.method === 'GET') {
+        const r = await fetch(`${API}?action=presets`, { cf: { cacheTtl: 3600, cacheEverything: true } });
         return json(await r.text(), r.status);
       }
       if (action === 'permlink' && request.method === 'GET') {

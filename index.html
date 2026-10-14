@@ -73,7 +73,8 @@
   #r-generate { background: #1f6f3a; border-color: #2a8a4a; font-weight: 600; }
   #r-generate:disabled { opacity: .6; cursor: progress; }
   /* the generator choice: alttpr.com's settings or Kara's */
-  body:not(.gen-kara) #rando-bar .kara-only, body.gen-kara #rando-bar .vt-only { display: none !important; }
+  body:not(.gen-kara) #rando-bar .kara-only, body:not(.gen-avian) #rando-bar .avian-only,
+  body.gen-kara #rando-bar .vt-only, body.gen-avian #rando-bar .vt-only, body.gen-avian #rando-bar .no-avian { display: none !important; }
   #r-kara { display: contents; }
   #rando-bar label.f[hidden] { display: none; }
   #r-kara-more-body { display: flex; flex-direction: column; gap: 8px; margin-top: 6px; }
@@ -100,7 +101,7 @@
   #r-custom > summary .cz-badge { padding: 1px 8px; border-radius: 10px; border: 1px solid var(--line); color: var(--dim);
     font-size: 11px; font-weight: 600; }
   #r-custom > summary .cz-badge.on { color: #0e1116; background: var(--accent); border-color: var(--accent); }
-  #r-custom:not([open]) > summary::after { content: 'presets, item pool, placements, starting items\2026'; }
+  #r-custom:not([open]) > summary::after { content: 'item pool, placements, starting items\2026'; }
   body.custom-on:not(.gen-kara) #r-generate::after { content: ' (custom)'; font-weight: 400; }
   #r-custom-body { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; color: var(--text); font-size: 13px;
     max-height: min(62vh, 640px); overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
@@ -214,10 +215,28 @@
   #rando-bar input#r-relay { width: 16em; }
   #rando-bar input#r-avian-relay { width: 16em; }
   #rando-bar #r-avian-custom { width: 11em; }
-  #rando-bar #r-avian-load { flex: 1; min-width: 12em; text-transform: none; letter-spacing: 0; }
-  #rando-bar .avian-field .sprite-row { flex-wrap: wrap; align-items: center; }
-  #rando-bar .avian-field select { max-width: 100%; }
-  #rando-bar .avian-race { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-weight: 400; }
+  /* fields with a row of controls and a note under them */
+  #rando-bar .stack-field { display: flex; flex-direction: column; gap: 3px; color: var(--dim); font-size: 11px;
+    text-transform: uppercase; letter-spacing: .04em; max-width: 100%; }
+  #rando-bar .stack-field .sprite-row { flex-wrap: wrap; align-items: center; }
+  #rando-bar .stack-field select { max-width: 100%; }
+  #r-saved { min-width: 13em; }
+  #r-avian-preset { min-width: 15em; }
+  #rando-bar .field-note { text-transform: none; letter-spacing: 0; font-size: 11px; color: var(--dim); max-width: 28em; }
+  #rando-bar .small-row { gap: 12px; }
+  #rando-bar .linkish { background: none; border: 0; padding: 0; color: var(--accent); font-size: 12px; cursor: pointer;
+    text-decoration: underline; text-underline-offset: 2px; text-transform: none; letter-spacing: 0; }
+  #rando-bar button:disabled { opacity: .5; cursor: default; }
+  #r-saved-field { padding-right: 12px; margin-right: 2px; border-right: 1px solid var(--line); }
+  body.phone #r-saved-field { padding-right: 0; margin-right: 0; border-right: 0; }
+  body.phone #rando-bar .stack-field .sprite-row:first-of-type { flex-wrap: nowrap; }
+  body.phone #rando-bar .stack-field { width: 100%; min-width: 0; }
+  body.phone #r-saved, body.phone #r-avian-preset { min-width: 0; width: 0; flex: 1 1 0; }
+  /* buttons with a small line under their name (Load ROM, Base ROM) */
+  .filebtn.two-line { display: inline-flex; flex-direction: column; align-items: flex-start; line-height: 1.15; }
+  .filebtn.two-line small { font-size: 10px; font-weight: 400; color: var(--dim); white-space: nowrap; }
+  #r-base-label { border-color: #2a8a4a; }
+  #r-base-label:not(.ok) { background: #2a2410; border-color: var(--warn, #d29922); }
 
   /* seed links (randomizer/share.js) */
   #r-shared { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; flex-basis: 100%;
@@ -456,14 +475,16 @@
     <div id="r-gen-menu" role="menu" hidden>
       <button type="button" role="menuitemradio" data-gen="alttpr" aria-checked="true"><b>alttpr.com</b><small>The official generator (build 2024-02-18)</small></button>
       <button type="button" role="menuitemradio" data-gen="kara" aria-checked="false"><b>Kara's branch</b><small>alttpr.gwaa.kiwi: door, overworld and more shuffles</small></button>
+      <button type="button" role="menuitemradio" data-gen="avianart" aria-checked="false"><b>AVIANART</b><small>avianart.games: tournament and community presets</small></button>
     </div>
     <!-- the generator choice itself (randomizer/app.js reads it); the menu above sets it -->
     <select id="r-gen" hidden aria-hidden="true" tabindex="-1">
       <option value="alttpr" selected>alttpr.com</option>
       <option value="kara">Kara's branch</option>
+      <option value="avianart">AVIANART</option>
     </select>
   </div>
-    <label class="filebtn" for="rom-input" title="Play a seed .sfc you already have, or pick your Japanese 1.0 ROM to randomize it">Load ROM…</label>
+    <label class="filebtn two-line" id="rom-input-label" for="rom-input" title="Open a ROM file to play: a seed that's already been rolled (.sfc), or a plain copy of the game. To make new seeds, use Base ROM in the Randomizer bar.">Load ROM…<small>rolled seed or vanilla game</small></label>
   <!-- No `accept` filter: iOS doesn't know the .sfc/.smc types and would gray
        the files out. The ROM is checked in JS after it's picked instead. -->
   <input type="file" id="rom-input">
@@ -534,7 +555,32 @@
 <section id="rando-bar" aria-label="Randomizer settings">
   <div id="r-shared" role="status" hidden></div>
   <div class="group">
+    <div class="f stack-field" id="r-saved-field">Saved presets
+      <div class="sprite-row">
+        <select id="r-saved" aria-label="Saved presets"></select>
+        <button type="button" id="r-saved-save" title="Save the current generator and its settings as a preset">Save</button>
+        <button type="button" id="r-saved-del" title="Delete the chosen preset" disabled>Delete</button>
+      </div>
+      <div class="sprite-row small-row">
+        <button type="button" id="r-saved-export" class="linkish" title="Download the chosen preset (or all of yours) as a file">Export</button>
+        <label class="linkish" for="r-saved-import" title="Add presets from a file: one exported here, or a Save file from alttpr.com's Customizer">Import…</label>
+        <input type="file" id="r-saved-import" accept=".json,application/json" hidden>
+      </div>
+    </div>
     <div id="r-kara" class="kara-only"></div>
+    <div class="f stack-field avian-only" id="r-avian-field">AVIANART preset
+      <div class="sprite-row">
+        <select id="r-avian-preset" aria-label="AVIANART preset"></select>
+        <input type="text" id="r-avian-custom" hidden placeholder="namespace/preset" aria-label="Someone's AVIANART preset" autocomplete="off" spellcheck="false" autocapitalize="off">
+      </div>
+      <span id="r-avian-desc" class="field-note"></span>
+    </div>
+    <label class="f avian-only" title="A race seed: AVIANART keeps its spoiler hidden">Race
+      <select id="r-avian-race">
+        <option value="no" selected>No</option>
+        <option value="yes">Yes (spoiler hidden)</option>
+      </select>
+    </label>
     <label class="f vt-only">World state
       <select id="r-mode">
         <option value="standard">Standard</option>
@@ -619,28 +665,15 @@
         <option value="off">Off</option>
       </select>
     </label>
-    <label class="f">Seed
+    <label class="f no-avian">Seed
       <input type="text" id="r-seed" placeholder="random" inputmode="numeric" autocomplete="off" spellcheck="false">
     </label>
     <div class="f paste-field">Load a seed
       <div class="sprite-row">
-        <input type="text" id="r-paste" placeholder="Seed link, alttpr.com, gwaa.kiwi or AVIANART link, or number" autocomplete="off" spellcheck="false">
+        <input type="text" id="r-paste" placeholder="Paste a seed link" autocomplete="off" spellcheck="false" autocapitalize="off">
         <button type="button" id="r-paste-go" title="Load and play the seed you pasted">Load</button>
       </div>
-    </div>
-    <div class="f paste-field avian-field" title="Roll a seed on avianart.games (its Door Randomizer server) and play it here">AVIANART
-      <div class="sprite-row">
-        <select id="r-avian-preset">
-          <option value="other">Other preset…</option>
-        </select>
-        <input type="text" id="r-avian-custom" hidden placeholder="namespace/preset" autocomplete="off" spellcheck="false" autocapitalize="off">
-        <label class="avian-race" title="A race seed: AVIANART keeps its spoiler hidden"><input type="checkbox" id="r-avian-race"> Race</label>
-        <button type="button" id="r-avian-go" title="Roll a new seed with this AVIANART preset and play it">Roll</button>
-      </div>
-      <div class="sprite-row">
-        <input type="text" id="r-avian-load" placeholder="AVIANART permalink or hash" autocomplete="off" spellcheck="false" autocapitalize="off">
-        <button type="button" id="r-avian-load-go" title="Load and play this AVIANART seed">Load</button>
-      </div>
+      <span class="field-note">alttpr.com, alttpr.gwaa.kiwi or avianart.games link (or a seed link from this app)</span>
     </div>
     <div class="f sprite-field">Link sprite
       <div class="sprite-row">
@@ -680,25 +713,13 @@
       <div class="cz-top">
         <label class="cz-toggle" title="On: Generate makes a seed from the menus below (alttpr.com's Customizer). Off: a normal seed from the bar's settings."><input type="checkbox" id="r-custom-on"><span class="cz-switch" aria-hidden="true"></span><span>Use the customizer when generating</span></label>
         <div class="cz-row">
-          <span class="cz-lbl">Presets</span>
-          <select id="r-custom-preset" aria-label="Presets" title="Load a saved preset: the bar's settings and every menu below"></select>
-          <button type="button" id="r-custom-del" title="Delete the chosen preset" disabled>Delete</button>
-        </div>
-        <div class="cz-row">
-          <input type="text" id="r-custom-name" maxlength="60" placeholder="Preset name" aria-label="Preset name" autocomplete="off" spellcheck="false">
-          <button type="button" id="r-custom-save" title="Save the bar's settings and every menu below under this name">Save preset</button>
-        </div>
-        <div class="cz-row">
-          <button type="button" id="r-custom-export" title="Download the chosen preset (or all of them and the current settings) as a file">Export</button>
-          <label class="filebtn" for="r-custom-import" title="Add presets from a file: one exported here, or a Save file from alttpr.com's Customizer">Import…</label>
-          <input type="file" id="r-custom-import" accept=".json,application/json">
           <button type="button" id="r-custom-reset" title="Put every menu back to alttpr.com's defaults (saved presets are kept)">Reset all</button>
         </div>
       </div>
       <div class="cz-menus"></div>
       <p class="hint">alttpr.com's Customizer, made here in your browser with the same code: change the item pool, place items,
         pick starting equipment and more. Just because you can, doesn't mean you should: some settings make games that
-        can't be finished. A preset keeps the bar's settings too, so it's a quick way back to a setup you like, customizer on or off.</p>
+        can't be finished. To keep a setup, use <b>Save</b> in Saved presets: it keeps the bar's settings and these menus.</p>
     </div>
   </details>
   <details id="r-rom-more">
@@ -751,7 +772,7 @@
     </div>
   </details>
   <div class="actions">
-    <label class="filebtn" id="r-base-label" for="r-base-input">Base ROM…</label>
+    <label class="filebtn two-line" id="r-base-label" for="r-base-input"><span id="r-base-text">Base ROM…</span><small>Japanese 1.0 ROM, used to generate seeds</small></label>
     <input type="file" id="r-base-input">
     <button id="r-generate">Generate &amp; Play</button>
     <button id="r-stop" type="button" hidden title="Stop making this seed">Stop</button>
@@ -773,8 +794,8 @@
 
       <h2>Generate a seed to start</h2>
       <p>Pick your settings in the <b>Randomizer</b> bar above, choose your own Japanese 1.0 ALttP ROM
-         with <b>Base ROM…</b> (once), then press <b>Generate &amp; Play</b>.
-         Already have a seed <code>.sfc</code>? Use <b>Load ROM…</b> instead.
+         with <b>Base ROM</b> (once, it's what new seeds are made from), then press <b>Generate &amp; Play</b>.
+         Already have a rolled seed <code>.sfc</code>, or want the plain game? Use <b>Load ROM…</b> at the top instead.
          The tracker on the right updates automatically as you play.</p>
             <p style="font-size:12px">Everything runs in your browser. Your ROM is never uploaded.</p>
     </div>

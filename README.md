@@ -77,8 +77,12 @@ its own dropdown: Settings, Logic, Starting Equipment, Item Pool, Locations, Pri
 and Game Details. Turn on **Use the customizer when generating** and **Generate & Play** makes a seed from
 them, with the same code alttpr.com uses. Tap **?** beside a setting for what it does.
 
-**Presets:** type a name and press **Save preset** to keep the bar's settings and every customizer menu;
-pick it from **Presets** later to roll new seeds with it. **Export** saves presets to a file, **Import**
+**Saved presets** (the first field in the Randomizer bar) hold every generator's setups in one list. A
+preset knows which generator it's for (alttpr.com, Kara's branch or AVIANART), so picking one switches
+to that generator and sets it up; then press **Generate & Play**. **Built-in** presets come first
+(**OnlyADKDF** rolls AVIANART's `jem041/onlyadkdf` and turns on the tracker's OnlyADKD mode). **Save**
+keeps the current generator and its settings (for alttpr.com, the bar's settings and every customizer
+menu) under a name; **Delete** removes one of yours. **Export** saves your presets to a file, **Import…**
 adds them back (or reads a Save file from alttpr.com's own Customizer). Customized seeds can't be shared
 as a seed link; share the preset file instead.
 
@@ -356,14 +360,14 @@ to `ALLOWED` at the top of the worker (the built-in relay only serves that site)
 
 ### AVIANART seeds
 
-**Randomizer → AVIANART** rolls a seed on [avianart.games](https://avianart.games) (its Door
-Randomizer server, the one PedChicken uses on Discord) and plays it here. Pick a preset and
-press **Roll**; **Other preset…** takes any AVIANART preset name, like `jem041/onlyadkdf`
-(`namespace/preset`, as PedChicken shows it). **Race** asks for a race seed (spoiler hidden).
-Pasting an AVIANART permalink (`https://avianart.games/perm/…`) into **Load a seed** plays
-that exact seed, so everyone in a race can load the same one; the AVIANART row has its own
-permalink box and **Load** button too. After an AVIANART seed, the header's **Reroll** rolls
-that preset again on AVIANART (for a loaded permalink, the preset picked in the AVIANART row).
+**AVIANART** is the third generator in the menu beside **Randomizer** (with alttpr.com and Kara's
+branch). It rolls seeds on [avianart.games](https://avianart.games) (its Door Randomizer server, the one
+PedChicken uses on Discord) and plays them here. AVIANART rolls from presets only, so its settings are
+**AVIANART preset** (its whole list, by category, fetched from the site each time; a copy is built in)
+and **Race** (spoiler hidden). **Someone else's preset…** takes a player's preset name like
+`jem041/onlyadkdf` (`namespace/preset`, as PedChicken shows it). **Generate & Play** and the header's
+**Reroll** roll the chosen preset. Pasting an AVIANART permalink (`https://avianart.games/perm/…`) into
+**Load a seed** plays that exact seed, so everyone in a race can load the same one.
 
 The ROM is built in your browser from your Japanese 1.0 ROM, then your sprite, music and
 other options go on. The tracker follows the seed's world state, dungeon items, GT
@@ -413,10 +417,12 @@ published site does both when it's deployed.
 
 Open http://localhost:8080. Then either:
 
-- **Generate a seed in the app.** Pick settings in the **Randomizer** bar, press
-  **Base ROM…** once to choose your own Japanese 1.0 ALttP ROM, then press
+- **Generate a seed in the app.** Pick a preset or settings in the **Randomizer** bar, press
+  **Base ROM…** once to choose your own Japanese 1.0 ALttP ROM (every generator makes its
+  seeds from it), then press
   **Generate & Play**. The trackers are set up to match the seed automatically.
-- **Play a seed you already have.** Click **Load ROM…** and pick the `.sfc`,
+- **Play a seed you already have.** Click **Load ROM…** (in the header: for a seed that's
+  already been rolled, or a plain copy of the game) and pick the `.sfc`,
   then set **World** and **Dungeon items** in the top bar to match it.
 
 It also works as a static site (GitHub Pages, Netlify, etc.), which lets you
