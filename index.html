@@ -59,6 +59,12 @@
     padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right));
     border-bottom: 1px solid var(--line); background: #11161d; }
   body.rando-open #rando-bar { display: flex; }
+  /* a tall bar (AVIANART's tabs, the customizer) scrolls inside itself, so the
+     game area below always keeps its room (phones have their own sheet) */
+  body.rando-open:not(.phone) #rando-bar { max-height: 64vh; overflow-y: auto; overscroll-behavior: contain; }
+  /* …with Base ROM / Generate & Play always in view at its bottom edge */
+  body:not(.phone) #rando-bar .actions { position: sticky; bottom: -10px; z-index: 5; flex-basis: 100%;
+    margin: 0 -16px -10px; padding: 8px 16px 10px; background: #11161d; border-top: 1px solid var(--line); }
   #rando-bar label.f { display: flex; flex-direction: column; gap: 3px; color: var(--dim); font-size: 11px;
     text-transform: uppercase; letter-spacing: .04em; }
   #rando-bar label.f select, #rando-bar label.f input { text-transform: none; letter-spacing: 0; }
@@ -227,9 +233,7 @@
   #r-avian-mode.on { color: #0e1116; background: var(--accent); border-color: var(--accent); }
   #r-avian-desc b { color: var(--text); font-weight: 600; }
   #r-avian-panel { flex-basis: 100%; display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; border: 1px solid var(--line);
-    border-radius: 8px; background: #0d1117; max-height: min(58vh, 600px); overflow-y: auto; -webkit-overflow-scrolling: touch;
-    overscroll-behavior: contain; }
-  body.phone #r-avian-panel { max-height: none; overflow: visible; }
+    border-radius: 8px; background: #0d1117; }
   #r-avian-panel[hidden] { display: none !important; }
   #r-avian-panel .av-head { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; font-size: 12px; color: var(--dim); }
   #r-avian-panel .av-head b { color: var(--text); font-size: 13px; }
