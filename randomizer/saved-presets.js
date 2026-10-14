@@ -90,7 +90,7 @@ async function save() {
   const gen = hooks.gen();
   const cur = current();
   const suggest = cur && !cur.startsWith(BUILTIN_PREFIX) ? cur : '';
-  let name = window.prompt(`Save the current ${GEN_LABEL[gen]} settings as a preset. Name:`, suggest);
+  let name = window.prompt(`Name this preset (${GEN_LABEL[gen]} with the settings you have now):`, suggest);
   if (name == null) return;
   name = name.trim().slice(0, 60);
   if (!name) { hooks.status('A preset needs a name.', 'bad'); return; }
