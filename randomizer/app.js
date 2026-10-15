@@ -849,6 +849,80 @@ function rollAvian() {
   else playAvian(null, { preset: src.id, race });
 }
 
+// ── crowd control: viewer-paid seed rolls (crowd/effects.js) ─────────────────
+// presets(): every preset in the Saved presets menu. usePreset(value): set one
+// up. chaos(): pick a generator at random and randomize its menus. Each
+// returns a short text for the stream; Generate & Play then rolls it.
+const pickOne = (list) => list[Math.floor(Math.random() * list.length)];
+// Settings chaos leaves alone: glitched logic (seeds that need glitches),
+// AVIANART's timer modes, race seeds, and Kara's permanent OHKO / gloom.
+const CHAOS_KEEP = { kara: { damage_challenge: 'normal' }, avianart: { logiclevel: 'noglitches', timer: 'none' } };
+const VT_CHAOS = ['r-mode', 'r-goal', 'r-tower', 'r-ganon', 'r-weapons', 'r-dungeon', 'r-placement', 'r-access', 'r-pool', 'r-func', 'r-hints'];
+function crowdApi() {
+  const optLabel = (sel) => { const o = sel && sel.options[sel.selectedIndex]; return o ? o.textContent.trim() : ''; };
+  function presets() {
+    const sel = $('r-saved');
+    if (!sel) return [];
+    const seen = new Set();
+    return [...sel.querySelectorAll('option')].filter((o) => o.value && !o.disabled && o.value !== AV_ASK && !seen.has(o.value) && seen.add(o.value))
+      .map((o) => ({ value: o.value, label: o.textContent.replace(/^★\s*/, '').trim() }));
+  }
+  // What a viewer's random preset picks from: your ★ favourite presets if you
+  // have any, otherwise every preset except glitched-logic ones (HMG, OWG,
+  // No Logic...), which can need glitches to finish.
+  function pool() {
+    const all = presets();
+    const starred = new Set(Saved.favs());
+    const fav = all.filter((p) => starred.has(p.value));
+    if (fav.length) return fav;
+    return all.filter((p) => !/glitch|no ?logic|anti-?logic|\b(hmg|owg|mg)\b/i.test(p.label));
+  }
+  async function usePreset(value) {
+    const hit = presets().find((p) => p.value === value);
+    if (!hit) return null;
+    const ok = await Saved.apply(value, { quiet: true });
+    if (!ok) return null;
+    $('r-seed').value = '';
+    return hit.label;
+  }
+  async function chaos() {
+    const gen = pickOne(['alttpr', 'kara', 'avianart']);
+    if ($('r-gen').value !== gen) { $('r-gen').value = gen; $('r-gen').dispatchEvent(new Event('change')); }
+    $('r-seed').value = '';
+    let parts = [];
+    if (gen === 'alttpr') {
+      if (customizerOn()) { $('r-custom-on').checked = false; $('r-custom-on').dispatchEvent(new Event('change', { bubbles: true })); }
+      VT_CHAOS.forEach((id) => { const el = $(id); el.value = pickOne([...el.options]).value; el.dispatchEvent(new Event('change', { bubbles: true })); });
+      parts = ['r-mode', 'r-goal', 'r-weapons', 'r-dungeon', 'r-pool'].map((id) => optLabel($(id)));
+    } else if (gen === 'kara') {
+      const o = {};
+      Kara.SETTINGS.forEach((d) => { o[d.key] = pickOne(d.values)[0]; });
+      Object.assign(o, CHAOS_KEEP.kara);
+      karaUi.set(o);
+      const now = karaUi.get();
+      const lab = (k) => { const d = Kara.SETTINGS.find((x) => x.key === k); const v = d && d.values.find((x) => x[0] === now[k]); return v ? v[1] : now[k]; };
+      parts = [lab('mode'), lab('goal'), lab('weapons'), 'entrances ' + lab('entrance_shuffle'), 'doors ' + lab('door_shuffle'), 'overworld ' + lab('overworld_layout')];
+    } else {
+      const items = [];
+      AvianUi.ITEMS.forEach((it) => items.push(it));
+      const v = {};
+      items.forEach((it) => {
+        if (it.type === 'checkbox') v[it.id] = Math.random() < 0.5;
+        else if (it.options && it.options.length) v[it.id] = String(pickOne(it.options)[0]);
+      });
+      Object.assign(v, CHAOS_KEEP.avianart);
+      AvianUi.setValues(v);
+      AvianUi.setSource({ kind: 'custom' }, { quiet: true });
+      $('r-avian-race').value = 'no';
+      const lab = (id) => { const it = items.find((x) => x.id === id); const o = it && (it.options || []).find((x) => String(x[0]) === String(v[id])); return o ? String(o[1]).trim() : String(v[id]); };
+      parts = [lab('worldstate'), lab('goal'), lab('weapons'), 'entrances ' + lab('entranceshuffle'), 'doors ' + lab('dungeondoorshuffle'), 'keys ' + lab('smallkeyshuffle')];
+    }
+    Saved.edited();
+    return `${GEN_NAME[gen]}: ${parts.filter(Boolean).join(' · ')}`;
+  }
+  return { presets, pool, usePreset, chaos };
+}
+
 // ── "Load a seed": paste a link or a number ──────────────────────────────────
 // This app's seed link -> its settings and seed number; an alttpr.com link or
 // seed id -> that seed; a plain number -> that seed number with the current
@@ -1708,7 +1782,7 @@ export function init() {
   buildMusicButton();
   refreshSprite();
 
-  window.UnifiedRando = { useIfBaseRom, prepareLoadedRom, noteRom };
+  window.UnifiedRando = { useIfBaseRom, prepareLoadedRom, noteRom, crowd: crowdApi() };
   if (window.__pendingRomNote) { noteRom(window.__pendingRomNote.bytes, window.__pendingRomNote.name); window.__pendingRomNote = null; }
   $('r-sprite-lib').addEventListener('click', () => openLibrary($, useLibrarySprite, coll));
   $('r-sprite-prev').addEventListener('click', () => {

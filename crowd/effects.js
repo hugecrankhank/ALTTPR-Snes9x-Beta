@@ -25,7 +25,7 @@
   'use strict';
 
   var SETTINGS_KEY = 's9x-crowd-settings';
-  var cfg = { enabled: false, url: 'ws://localhost:21214', feed: true, allowReroll: false, rerollOverlay: true };
+  var cfg = { enabled: false, url: 'ws://localhost:21214', feed: true, allowReroll: false, rerollOverlay: true, showTimer: true };
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) {}
   function saveCfg() { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(cfg)); } catch (e) {} }
 
@@ -172,7 +172,11 @@
     msu_roll:    { name: 'Random MSU pack', good: true,
       app: function () { return press(['music-roll-btn'], 'MSU packs (add some and star favourites in ♪)'); } },
     seed_roll:   { name: 'New seed!', good: false,
-      app: function (job) { return startReroll(job); } },
+      app: function (job) { return startReroll(job, 'same'); } },
+    seed_preset: { name: 'Random preset seed!', good: false,
+      app: function (job) { return startReroll(job, 'preset'); } },
+    seed_chaos:  { name: 'CHAOS seed!', good: false,
+      app: function (job) { return startReroll(job, 'chaos'); } },
   };
 
   // ── app actions ────────────────────────────────────────────────────────
@@ -206,40 +210,87 @@
 
   // A new seed closes this game, so: only if allowed, and with a countdown.
   // A banner over the game shows viewers who triggered it, the countdown, the
-  // seed being made, and the result.
-  var REROLL_SECS = 10;
-  var rerollT = null, rerollLeft = 0, rerollBy = '';
-  function startReroll(job) {
+  // seed being made, and the result. Three kinds of roll:
+  //   same    the settings the streamer has now
+  //   preset  a random preset from the Saved presets menu
+  //   chaos   a random generator with every one of its menus randomized
+  // (the last two use the randomizer's own helpers, randomizer/app.js crowdApi)
+  var REROLL_SECS = 10, MAX_TRIES = 3;
+  var ROLL_KIND = {
+    same:   { count: 'NEW SEED IN ', roll: 'Rolling a new seed…' },
+    preset: { count: 'RANDOM PRESET IN ', roll: 'Rolling a random preset…' },
+    chaos:  { count: 'CHAOS SEED IN ', roll: 'Rolling a CHAOS seed…' },
+  };
+  var rerollT = null, rerollLeft = 0, rerollBy = '', rerollMode = 'same', rerollPick = '', rerollTry = 0, rerollBusy = false;
+  function randoApi() { var r = root.UnifiedRando; return r && r.crowd; }
+  function startReroll(job, mode) {
+    mode = ROLL_KIND[mode] ? mode : 'same';
     if (!cfg.allowReroll) { feed('Seed reroll is turned off in Crowd effects', 'info'); return false; }
-    if (rerollT || rollWatch) { feed('A new seed is already coming', 'info'); return false; }
+    if (rerollT || rollWatch || rerollBusy) { feed('A new seed is already coming', 'info'); return false; }
     if (typeof document === 'undefined' || !document.getElementById('r-generate')) { feed('Not available: the randomizer', 'info'); return false; }
+    if (mode !== 'same' && !randoApi()) { feed('Not available: the randomizer isn\'t ready', 'info'); return false; }
     rerollBy = (job && job.user && job.user !== 'test') ? job.user : '';
+    rerollMode = mode; rerollPick = ''; rerollTry = 0;
     rerollLeft = REROLL_SECS;
-    feed('NEW SEED in ' + REROLL_SECS + 's!', 'bad');
+    feed(ROLL_KIND[mode].count + REROLL_SECS + 's!', 'bad');
     showRerollCountdown();
     rerollT = setInterval(function () {
       rerollLeft--;
       if (rerollLeft > 0) {
-        if (rerollLeft <= 3 || rerollLeft === 5) feed('New seed in ' + rerollLeft + '…', 'bad');
+        if (rerollLeft <= 3 || rerollLeft === 5) feed(ROLL_KIND[rerollMode].count + rerollLeft + '…', 'bad');
         showRerollCountdown(); render(); return;
       }
       clearInterval(rerollT); rerollT = null; render();
-      // reroll.js without its "are you sure?" box: empty the Seed box, Generate & Play
-      var gen = document.getElementById('r-generate'), seed = document.getElementById('r-seed');
-      if (!gen || gen.disabled) { feed('A seed is already being made', 'info'); banner('done-bad', 'No new seed', 'A seed was already being made', 4000); return; }
+      rollNow();
+    }, 1000);
+    render();
+    return true;
+  }
+
+  // Set up the settings for this kind of roll, then press Generate & Play.
+  function rollNow() {
+    var gen = document.getElementById('r-generate');
+    if (!gen || gen.disabled) { feed('A seed is already being made', 'info'); banner('done-bad', 'No new seed', 'A seed was already being made', 4000); return; }
+    rerollTry++;
+    rerollBusy = true;
+    var setup;
+    try {
+      var api = randoApi();
+      if (rerollMode === 'preset') {
+        var list = api.pool ? api.pool() : api.presets();
+        if (!list.length) throw new Error('there are no presets in the menu');
+        var pick = list[Math.floor(Math.random() * list.length)];
+        setup = api.usePreset(pick.value).then(function (label) {
+          if (!label) throw new Error('couldn\'t set up ' + pick.label);
+          return label;
+        });
+      } else if (rerollMode === 'chaos') {
+        setup = api.chaos();
+      } else setup = Promise.resolve('');
+    } catch (e) { setup = Promise.reject(e); }
+    setup.then(function (pickText) {
+      rerollBusy = false;
+      rerollPick = pickText;
+      var g = document.getElementById('r-generate'), seed = document.getElementById('r-seed');
+      if (!g || g.disabled) { banner('done-bad', 'No new seed', 'A seed was already being made', 4000); return; }
       quietAlerts();
+      // reroll.js without its "are you sure?" box: empty the Seed box, Generate & Play
       if (seed) {
         seed.value = '';
         seed.dispatchEvent(new Event('input', { bubbles: true }));
         seed.dispatchEvent(new Event('change', { bubbles: true }));
       }
-      feed('Rolling a new seed…', 'bad');
-      gen.click();
+      feed(rerollMode === 'preset' ? 'Random preset: ' + pickText : rerollMode === 'chaos' ? 'CHAOS seed: ' + pickText.split(':')[0] : 'Rolling a new seed…', 'bad');
+      g.click();
       watchRoll();
-    }, 1000);
-    render();
-    return true;
+    }, function (e) {
+      rerollBusy = false;
+      console.warn('[crowd] seed roll setup', e);
+      banner('done-bad', 'Seed reroll failed', String((e && e.message) || e), 6000);
+      render();
+    });
   }
+
   function cancelReroll() {
     if (!rerollT) return;
     clearInterval(rerollT); rerollT = null;
@@ -247,36 +298,82 @@
     banner('done-bad', 'New seed cancelled', 'The streamer kept this seed', 4000);
   }
   function showRerollCountdown() {
-    banner('count', 'NEW SEED IN ' + rerollLeft,
+    banner('count', ROLL_KIND[rerollMode].count + rerollLeft,
       (rerollBy ? 'from ' + rerollBy + ' · ' : '') + 'this game ends', 0, rerollLeft / REROLL_SECS);
   }
 
   // Follow the randomizer while it works: its Generate button stays disabled
-  // until the seed is ready, and its status line says what it's doing.
+  // until the seed is ready, and its status line says what it's doing. A
+  // random preset or chaos roll that fails picks again (up to 3 tries).
   var rollWatch = null;
   function watchRoll() {
     var started = Date.now(), seenBusy = false;
+    var title = ROLL_KIND[rerollMode].roll;
+    var detail = rerollPick;
     clearInterval(rollWatch);
     rollWatch = setInterval(function () {
       var gen = document.getElementById('r-generate'), st = document.getElementById('r-status');
       var text = st ? st.textContent.trim() : '';
       var secs = Math.round((Date.now() - started) / 1000);
       if (gen && gen.disabled) seenBusy = true;
-      if (!seenBusy && secs < 3) { banner('roll', 'Rolling a new seed…', 'Starting', 0); return; }
-      if (gen && gen.disabled && secs < 600) {
-        banner('roll', 'Rolling a new seed…', (text.replace(/\s*\d+s$/, '') || 'Working') + ' · ' + secs + 's', 0);
+      if (!seenBusy && secs < 3) { banner('roll', title, 'Starting', 0, 0, detail); return; }
+      if (gen && gen.disabled && secs < 900) {
+        banner('roll', title, (text.replace(/\s*\d+s$/, '') || 'Working') + ' · ' + secs + 's', 0, 0, detail);
         return;
       }
       clearInterval(rollWatch); rollWatch = null;
       var ok = st && st.className === 'ok' && /^(.*\. )?Ready/.test(text);
       if (ok) {
         var code = (text.match(/code ([^,(.]+(?: \/ [^,(.]+)*)/) || [])[1];
-        banner('done-ok', 'New seed ready!', (rerollBy ? 'Courtesy of ' + rerollBy : 'Good luck') + (code ? ' · code ' + code.trim() : ''), 6000);
+        var sub = (rerollBy ? 'Courtesy of ' + rerollBy : 'Good luck') + (code ? ' · code ' + code.trim() : '');
+        var head = rerollMode === 'chaos' ? 'CHAOS seed ready!' : rerollMode === 'preset' ? 'Random preset ready!' : 'New seed ready!';
+        banner('done-ok', head, sub, rerollPick ? 10000 : 6000, 0, detail);
+      } else if (rerollMode !== 'same' && rerollTry < MAX_TRIES && !/^Stopped/.test(text)) {
+        feed('That one didn\'t work, picking again (' + (rerollTry + 1) + '/' + MAX_TRIES + ')', 'info');
+        banner('roll', ROLL_KIND[rerollMode].roll, 'That pick didn\'t work, picking again', 0);
+        setTimeout(rollNow, 800);
       } else {
         banner('done-bad', 'Seed reroll failed', text || 'Kept the current game', 6000);
       }
       render();
     }, 300);
+  }
+
+  // ── subathon clock (the bridge keeps the time; this just shows it) ──────
+  var clockEl = null, clockPopT = null, lastAddId = 0;
+  var CLOCK_CSS =
+    '.cc-clock { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 24; pointer-events: none;' +
+    ' display: flex; align-items: baseline; gap: 8px; padding: 4px 12px; border-radius: 8px; background: rgba(10,12,16,.8);' +
+    ' color: #fff; font: 800 18px/1.1 ui-monospace, "Cascadia Mono", Consolas, monospace; text-shadow: 0 1px 2px #000;' +
+    ' border: 1px solid rgba(227,179,65,.6); font-variant-numeric: tabular-nums; }' +
+    '.cc-clock.paused .t { opacity: .6; } .cc-clock.ended { border-color: #e5534b; }' +
+    '.cc-clock .p { color: #3fb950; font-size: 13px; font-family: system-ui, sans-serif; transition: opacity .6s; }';
+  function fmtClock(sec) {
+    sec = Math.max(0, Math.floor(sec));
+    var h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, x = sec % 60;
+    return h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x;
+  }
+  function showClock(t) {
+    if (typeof document === 'undefined') return;
+    var on = cfg.showTimer && t && t.active;
+    if (!on) { if (clockEl) { clockEl.remove(); clockEl = null; } return; }
+    var host = document.querySelector('.s9x'); if (!host) return;
+    if (!document.getElementById('cc-clock-css')) { var st = document.createElement('style'); st.id = 'cc-clock-css'; st.textContent = CLOCK_CSS; document.head.appendChild(st); }
+    if (!clockEl) { clockEl = document.createElement('div'); clockEl.innerHTML = '<span class="t"></span><span class="p"></span>'; }
+    if (clockEl.parentNode !== host) host.appendChild(clockEl);
+    clockEl.className = 'cc-clock' + (t.ended ? ' ended' : !t.running ? ' paused' : '');
+    clockEl.querySelector('.t').textContent = t.ended ? 'TIME!' : fmtClock(t.remaining);
+    var a = t.lastAdd;
+    if (a && a.id !== lastAddId) {
+      var first = !lastAddId; lastAddId = a.id;
+      if (!first && a.seconds > 0) {
+        var p = clockEl.querySelector('.p');
+        var sx = a.seconds, add = sx < 60 ? sx + 's' : sx < 3600 ? Math.floor(sx / 60) + 'm' + (sx % 60 ? ' ' + sx % 60 + 's' : '') : fmtClock(sx);
+        p.textContent = '+' + add + (a.user ? ' ' + a.user : '');
+        p.style.opacity = '1';
+        clearTimeout(clockPopT); clockPopT = setTimeout(function () { p.style.opacity = '0'; }, 4000);
+      }
+    }
   }
 
   // The banner itself: one element on the game picture, re-attached if the
@@ -287,8 +384,9 @@
     ' min-width: 58%; max-width: 92%; box-sizing: border-box; padding: 10px 16px 12px; border-radius: 10px; text-align: center;' +
     ' background: rgba(10,12,16,.86); color: #fff; font: 700 13px/1.3 system-ui, sans-serif; text-shadow: 0 1px 2px #000;' +
     ' border: 2px solid #e5534b; box-shadow: 0 4px 18px rgba(0,0,0,.5); transition: opacity .5s; }' +
-    '.cc-reroll .t { font-size: clamp(16px, 4.2vw, 30px); letter-spacing: .04em; }' +
+    '.cc-reroll .t { font-size: clamp(15px, 3.6vw, 28px); letter-spacing: .04em; }' +
     '.cc-reroll .s { margin-top: 3px; font-weight: 600; opacity: .9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }' +
+    '.cc-reroll .d { margin-top: 5px; font-weight: 700; font-size: 13px; color: #f0c674; line-height: 1.35; }' +
     '.cc-reroll .bar { margin-top: 8px; height: 5px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; }' +
     '.cc-reroll .bar i { display: block; height: 100%; background: #e5534b; transition: width 1s linear; }' +
     '.cc-reroll.roll { border-color: #e3b341; } .cc-reroll.roll .bar i { width: 35% !important; background: #e3b341; animation: cc-slide 1.1s ease-in-out infinite alternate; }' +
@@ -297,18 +395,19 @@
     '@keyframes cc-slide { from { transform: translateX(0); } to { transform: translateX(185%); } }' +
     '@keyframes cc-pulse { 50% { transform: scale(1.06); } }' +
     '@media (prefers-reduced-motion: reduce) { .cc-reroll .t, .cc-reroll .bar i { animation: none !important; } }';
-  function banner(kind, title, sub, hideAfter, frac) {
+  function banner(kind, title, sub, hideAfter, frac, detail) {
     if (typeof document === 'undefined') return;
     clearTimeout(bannerHideT);
     if (!cfg.rerollOverlay) { if (bannerEl) bannerEl.remove(); return; }
     var host = document.querySelector('.s9x'); if (!host) return;
     if (!document.getElementById('cc-reroll-css')) { var st = document.createElement('style'); st.id = 'cc-reroll-css'; st.textContent = BANNER_CSS; document.head.appendChild(st); }
-    if (!bannerEl) { bannerEl = document.createElement('div'); bannerEl.setAttribute('role', 'status'); bannerEl.innerHTML = '<div class="t"></div><div class="s"></div><div class="bar"><i></i></div>'; }
+    if (!bannerEl) { bannerEl = document.createElement('div'); bannerEl.setAttribute('role', 'status'); bannerEl.innerHTML = '<div class="t"></div><div class="s"></div><div class="d"></div><div class="bar"><i></i></div>'; }
     if (bannerEl.parentNode !== host) host.appendChild(bannerEl);
     bannerEl.className = 'cc-reroll ' + kind;
     bannerEl.style.opacity = '1';
     bannerEl.querySelector('.t').textContent = title;
     bannerEl.querySelector('.s').textContent = sub || '';
+    var dEl = bannerEl.querySelector('.d'); dEl.textContent = detail || ''; dEl.hidden = !detail;
     var bar = bannerEl.querySelector('.bar');
     bar.hidden = !(kind === 'count' || kind === 'roll');
     if (kind === 'count') bar.firstChild.style.width = Math.max(0, Math.min(1, frac || 0)) * 100 + '%';
@@ -465,6 +564,8 @@
       if (m.type === 'effect') {
         var n = Math.max(1, Math.min(10, m.count | 0 || 1));
         for (var i = 0; i < n; i++) trigger(m.effect, m.user, m.label);
+      } else if (m.type === 'timer') {
+        showClock(m);
       } else if (m.type === 'durations') {
         durations = m.secs && typeof m.secs === 'object' ? m.secs : {};
         render();
@@ -501,6 +602,7 @@
       '<div class="row"><span>Bridge address</span><input type="text" data-ext="cc-url" value="' + esc(cfg.url) + '" style="width:55%;max-width:240px"></div>' +
       '<div class="row"><span>Show feed on game</span><input type="checkbox" data-ext="cc-feed"' + (cfg.feed ? ' checked' : '') + '></div>' +
       '<div class="row"><span>Allow seed reroll (ends this game)</span><input type="checkbox" data-ext="cc-reroll"' + (cfg.allowReroll ? ' checked' : '') + '></div>' +
+      '<div class="row"><span>Show subathon clock on game</span><input type="checkbox" data-ext="cc-show-timer"' + (cfg.showTimer ? ' checked' : '') + '></div>' +
       '<div class="row"><span>Show seed-reroll banner on game</span><input type="checkbox" data-ext="cc-reroll-overlay"' + (cfg.rerollOverlay ? ' checked' : '') + '></div>' +
       (rerollT ? '<div class="acts"><button type="button" class="primary" data-ext="cc-cancel-reroll">Cancel new seed (' + rerollLeft + 's)</button></div>' : '') +
       '<p class="hint">Status: ' + esc(status) + (bridgeInfo ? ' · ' + esc(bridgeInfo) : '') +
@@ -521,6 +623,7 @@
     var a = el.dataset.ext;
     if (a === 'cc-enabled') { cfg.enabled = el.checked; saveCfg(); connect(); }
     else if (a === 'cc-feed') { cfg.feed = el.checked; saveCfg(); }
+    else if (a === 'cc-show-timer') { cfg.showTimer = el.checked; saveCfg(); if (!el.checked && clockEl) { clockEl.remove(); clockEl = null; } }
     else if (a === 'cc-reroll-overlay') { cfg.rerollOverlay = el.checked; saveCfg(); if (!el.checked && bannerEl) { bannerEl.remove(); bannerEl = null; } }
     else if (a === 'cc-reroll') { cfg.allowReroll = el.checked; saveCfg(); if (!el.checked) cancelReroll(); rerender && rerender(); }
     else if (a === 'cc-url') {
@@ -557,7 +660,7 @@
 
   var api = {
     trigger: trigger, list: list, cancelReroll: cancelReroll, EFFECTS: EFFECTS, ADDR: A, inPlay: inPlay,
-    _onFrame: onFrame, _onInput: onInput,
+    _onFrame: onFrame, _onInput: onInput, _showClock: showClock,
     get queue() { return queue.slice(); }, get active() { return Object.assign({}, active); },
     get status() { return status; },
   };

@@ -26,6 +26,14 @@
     "Galaxy": "seed_roll"
   },
 
+  "coinTiers": [
+    { "coins": 1000, "effect": "seed_roll",   "label": "New seed (same settings)" },
+    { "coins": 1200, "effect": "seed_preset", "label": "Random preset seed" },
+    { "coins": 2000, "effect": "seed_chaos",  "label": "CHAOS seed" }
+  ],
+
+  "timer": { "enabled": true, "secondsPerCoin": 1 },
+
   "durations": { "cucco_storm": 20, "one_hit": 20, "no_magic": 20 },
 
   "likes": { "every": 300, "effect": "heal_1" },

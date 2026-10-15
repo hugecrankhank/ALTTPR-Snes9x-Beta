@@ -52,6 +52,7 @@ reloads by itself when you save it.
 | `bombs_plus` / `bombs_none` | +10 / lose all bombs | | `ice` | Ice physics (slippery floors everywhere), 20 s |
 | `enemy_spawn` | Extra enemy (copies one already in the room) | | | |
 | `insta_kill` | Instant death (a bottled fairy still saves you) | | | |
+| `seed_preset` / `seed_chaos` | Random preset / CHAOS seed (see below) | | | |
 | `arrows_plus` / `arrows_none` | +10 / lose all arrows | | `cucco_storm` | Cucco attack: angry cuccos fly at Link, 30 s of outdoor time (the clock pauses indoors) |
 
 **App rolls** (use the app's own buttons):
@@ -74,6 +75,26 @@ Timed effects count only time spent in play and stack (a second gift adds
 time). `ice` and `cucco_storm` switch on features built into the randomizer
 ROM itself; on a ROM without them the feed says so and nothing happens. They only filter buttons or hold a value each frame, so save states,
 resets and reloads can't leave the game stuck changed.
+
+## Seed rolls by coins
+
+`coinTiers` in mapping.json: a donation worth at least that many coins (gift
+value × streak count) does that effect instead of the gift's own; the highest
+tier reached wins. Defaults: 1000 `seed_roll` (same settings), 1200
+`seed_preset` (a random preset from Saved presets: your ★ ones if any, else
+all but glitched-logic ones), 2000 `seed_chaos` (random generator, every menu
+randomized except glitched logic, race, AVIANART timer modes and Kara's
+damage challenge; up to 3 tries). The randomizer side is
+`window.UnifiedRando.crowd` in `randomizer/app.js`.
+
+## Subathon clock
+
+The bridge keeps a countdown (`timer-state.json`, restored paused on restart).
+Control page: `http://localhost:21214/timer/control` (set, start, pause,
+adjust; it sends an `x-ccbridge` header, which other sites can't). Every coin
+adds `timer.secondsPerCoin` seconds while the clock is set and not finished.
+It shows on the game (bottom centre, can be turned off in Crowd effects) and
+as an OBS source at `/timer` (`?size=`, `?bg=0`, `?label=0`).
 
 ## Scrolling gift list (OBS)
 

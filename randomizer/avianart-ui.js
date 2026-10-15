@@ -29,6 +29,7 @@ let onChange = () => {};
 let labelFor = (id) => id;
 let openTab = null;
 
+export { ITEMS };
 export const getSource = () => source;
 export const getValues = () => ({ ...values });
 

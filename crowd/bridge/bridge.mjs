@@ -62,6 +62,10 @@ let knownEffects = null;   // ids the game reported in its hello
 
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, 'http://localhost');
+  if (url.pathname === '/timer') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(TIMER_HTML); return; }
+  if (url.pathname === '/timer/control') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(CONTROL_HTML); return; }
+  if (url.pathname === '/timer.json') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(timerView(true))); return; }
+  if (url.pathname === '/timer/api' && req.method === 'POST') { timerApi(req, res); return; }
   if (url.pathname === '/ticker') { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }); res.end(TICKER_HTML); return; }
   if (url.pathname === '/ticker.json') { res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' }); res.end(JSON.stringify(tickerData())); return; }
   if (url.pathname.startsWith('/icons/')) {
@@ -74,7 +78,8 @@ const server = http.createServer((req, res) => {
     res.writeHead(404); res.end(); return;
   }
   res.writeHead(200, { 'content-type': 'text/plain' });
-  res.end(`ALTTPR crowd bridge. Game pages connected: ${clients.size}\nScrolling gift list for OBS: http://localhost:${cfg.port}/ticker\n`);
+  res.end(`ALTTPR crowd bridge. Game pages connected: ${clients.size}\nScrolling gift list for OBS: http://localhost:${cfg.port}/ticker\n` +
+    `Subathon timer: http://localhost:${cfg.port}/timer (control: /timer/control)\n`);
 });
 
 server.on('upgrade', (req, socket) => {
@@ -133,6 +138,7 @@ function onGameMessage(text) {
     knownEffects = new Set((m.effects || []).map((e) => e.id));
     for (const e of m.effects || []) if (e.name) effectNames[e.id] = e.name;
     sendDurations();
+    broadcast({ type: 'timer', ...timerView() });
     const named = [...new Set(Object.values(cfg.gifts).concat(cfg.follow, cfg.share, cfg.likes?.effect).filter(Boolean))];
     for (const id of named) {
       if (knownEffects.has(id)) continue;
@@ -179,10 +185,25 @@ function fire(effect, user, label, count = 1) {
   log(`  → ${effect} x${count} ${user ? 'from ' + user : ''} ${label ? '(' + label + ')' : ''}`);
 }
 
-function onGift(user, giftName, giftId, count) {
-  const e = cfg.giftsLower[String(giftName || '').toLowerCase()] ?? cfg.gifts[String(giftId)];
-  log(`gift: ${user} sent "${giftName}" (id ${giftId}) x${count}${e ? '' : ' — not mapped'}`);
-  fire(e, user, `${giftName}${count > 1 ? ' x' + count : ''}`, count);
+// coinTiers in mapping.json: a donation worth at least that many coins does
+// that effect instead of its gift's own (highest tier reached wins).
+function tierFor(coins) {
+  const tiers = (Array.isArray(cfg.coinTiers) ? cfg.coinTiers : [])
+    .filter((t) => t && +t.coins > 0 && t.effect).sort((a, b) => b.coins - a.coins);
+  return coins > 0 ? tiers.find((t) => coins >= +t.coins) || null : null;
+}
+
+function onGift(user, giftName, giftId, count, coinsEach) {
+  // coins: TikTok's own value per gift; mapping.json "giftCoins" can fill in or override one
+  const own = (cfg.giftCoins || {})[giftName] ?? Object.entries(cfg.giftCoins || {}).find(([k]) => k.toLowerCase() === String(giftName).toLowerCase())?.[1];
+  const coins = Math.max(0, Math.round((+(own ?? coinsEach) || 0) * count));
+  const tier = tierFor(coins);
+  const e = tier ? tier.effect : cfg.giftsLower[String(giftName || '').toLowerCase()] ?? cfg.gifts[String(giftId)];
+  log(`gift: ${user} sent "${giftName}" (id ${giftId}) x${count}${coins ? ` = ${coins} coins` : ''}` +
+    (tier ? ` — ${tier.coins}+ coin tier` : e ? '' : ' — not mapped'));
+  timerAddCoins(user, coins);
+  if (tier) fire(tier.effect, user, `${coins} coins`, 1);
+  else fire(e, user, `${giftName}${count > 1 ? ' x' + count : ''}`, count);
 }
 
 let likeBank = 0;
@@ -213,7 +234,7 @@ const effectNames = {
   enemy_spawn: 'Extra enemy', insta_kill: 'Instant death', ice: 'Ice physics', cucco_storm: 'Cucco attack', invert: 'Inverted D-pad',
   no_sword: 'No sword', no_item: 'No Y item', swap_by: 'B and Y swapped', one_hit: 'One-heart mode',
   no_magic: 'Magic locked', sprite_roll: 'Random sprite', sprite_fav: 'Random favourite sprite',
-  msu_roll: 'Random MSU pack', seed_roll: 'New seed!',
+  msu_roll: 'Random MSU pack', seed_roll: 'New seed (same settings)', seed_preset: 'Random preset seed', seed_chaos: 'CHAOS seed',
 };
 const defaultSecs = { ice: 20, cucco_storm: 30, invert: 20, no_sword: 20, no_item: 20, swap_by: 20, one_hit: 30, no_magic: 30 };
 
@@ -235,6 +256,16 @@ function tickerData() {
     items.push({ gift: `${cfg.likes.every} likes`, label: labels[cfg.likes.effect] || effectNames[cfg.likes.effect] || cfg.likes.effect, secs: 0, icon: null, emoji: '❤' });
   for (const kind of ['follow', 'share']) if (t.showSocial !== false && cfg[kind])
     items.push({ gift: kind === 'follow' ? 'Follow' : 'Share', label: labels[cfg[kind]] || effectNames[cfg[kind]] || cfg[kind], secs: 0, icon: null, emoji: kind === 'follow' ? '➕' : '↗' });
+  const tiers = (Array.isArray(cfg.coinTiers) ? cfg.coinTiers : []).filter((x) => x && +x.coins > 0 && x.effect).sort((a, b) => a.coins - b.coins);
+  for (const x of tiers) {
+    const id = resolveEffect(x.effect) || x.effect;
+    items.push({ gift: `${Number(x.coins).toLocaleString('en-US')}+ coins`, label: x.label || labels[id] || effectNames[id] || id, secs: 0, icon: null, emoji: '🪙' });
+  }
+  const tm = cfg.timer || {};
+  if (tm.enabled !== false && t.showTimer !== false && timer.active) {
+    const per = +tm.secondsPerCoin || 1;
+    items.push({ gift: 'Every coin', label: per === 1 ? '+1 second on the clock' : `+${per} seconds on the clock`, secs: 0, icon: null, emoji: '⏱' });
+  }
   return { title: t.title ?? 'GIFT EFFECTS', speed: t.speed || 70, items };
 }
 
@@ -292,6 +323,247 @@ function step(now) {
   requestAnimationFrame(step);
 }
 poll(); requestAnimationFrame(step);
+</script></body></html>`;
+
+// ── subathon timer ─────────────────────────────────────────────────────────
+// The streamer sets a starting time on http://localhost:PORT/timer/control and
+// starts it; every coin donated adds "secondsPerCoin" (mapping.json "timer").
+// When it reaches 0 it stops and says TIME!. The time is saved to
+// timer-state.json, so closing the bridge doesn't lose it (it comes back
+// paused).
+const TIMER_FILE = path.join(HERE, 'timer-state.json');
+const timer = { active: false, running: false, ended: false, remaining: 0, endsAt: 0, added: 0, coins: 0, log: [], nextId: 1 };
+(function loadTimer() {
+  try {
+    const t = JSON.parse(fs.readFileSync(TIMER_FILE, 'utf8'));
+    Object.assign(timer, { active: !!t.active, ended: !!t.ended, remaining: Math.max(0, +t.remaining || 0), added: +t.added || 0, coins: +t.coins || 0,
+      log: Array.isArray(t.log) ? t.log.slice(-30) : [], nextId: +t.nextId || 1, running: false });
+  } catch {}
+})();
+function timerLeft() { return timer.running ? Math.max(0, (timer.endsAt - Date.now()) / 1000) : timer.remaining; }
+function timerView(full) {
+  const v = { active: timer.active, running: timer.running, ended: timer.ended, remaining: Math.ceil(timerLeft()),
+    lastAdd: timer.log.length ? timer.log[timer.log.length - 1] : null };
+  if (full) Object.assign(v, { added: timer.added, coins: timer.coins, log: timer.log.slice(-12).reverse(), secondsPerCoin: +(cfg.timer || {}).secondsPerCoin || 1 });
+  return v;
+}
+let timerSaveT = null;
+function timerChanged() {
+  broadcast({ type: 'timer', ...timerView() });
+  clearTimeout(timerSaveT);
+  timerSaveT = setTimeout(() => {
+    try { fs.writeFileSync(TIMER_FILE, JSON.stringify({ ...timer, remaining: timerLeft(), running: false })); } catch (e) { log('couldn\'t save the timer: ' + e.message); }
+  }, 300);
+}
+function fmtTime(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60, x = sec % 60;
+  return `${h}:${String(m).padStart(2, '0')}:${String(x).padStart(2, '0')}`;
+}
+function timerAdd(seconds, user, why) {
+  seconds = Math.round(seconds);
+  if (!seconds) return;
+  if (timer.running) timer.endsAt = Math.max(Date.now(), timer.endsAt + seconds * 1000);
+  else timer.remaining = Math.max(0, timer.remaining + seconds);
+  if (seconds > 0) timer.added += seconds;
+  timer.log.push({ id: timer.nextId++, seconds, user: user || '', why: why || '', at: Date.now() });
+  if (timer.log.length > 30) timer.log.shift();
+  timerChanged();
+}
+function timerAddCoins(user, coins) {
+  const tm = cfg.timer || {};
+  if (tm.enabled === false || !coins || !timer.active || timer.ended) return;
+  const secs = coins * (+tm.secondsPerCoin || 1);
+  timer.coins += coins;
+  timerAdd(secs, user, `${coins} coins`);
+  log(`  ⏱ +${fmtTime(secs)} from ${user} (clock: ${fmtTime(timerLeft())})`);
+}
+setInterval(() => {
+  if (!timer.running) return;
+  if (timerLeft() <= 0) {
+    timer.running = false; timer.ended = true; timer.remaining = 0;
+    log('⏱ TIME! The subathon clock hit 0:00:00.');
+  }
+  broadcast({ type: 'timer', ...timerView() });
+}, 1000);
+setInterval(() => { if (timer.running) timerChanged(); }, 15000);   // keep the saved time fresh
+
+function timerApi(req, res) {
+  // only this computer's own control page: it sends a custom header, which a
+  // web page from somewhere else can't send here
+  const origin = req.headers.origin;
+  const okOrigin = !origin || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  if (req.headers['x-ccbridge'] !== '1' || !okOrigin) { res.writeHead(403); res.end(); return; }
+  let body = '';
+  req.on('data', (c) => { body += c; if (body.length > 4096) req.destroy(); });
+  req.on('end', () => {
+    let a = {}; try { a = JSON.parse(body || '{}'); } catch {}
+    const n = Math.round(+a.seconds || 0);
+    switch (a.action) {
+      case 'set':
+        if (n <= 0) break;
+        Object.assign(timer, { active: true, running: false, ended: false, remaining: n, endsAt: 0, added: 0, coins: 0, log: [] });
+        log(`⏱ timer set to ${fmtTime(n)} (press Start on the control page)`);
+        break;
+      case 'start':
+        if (!timer.active || timer.ended || timer.running || timer.remaining <= 0) break;
+        timer.running = true; timer.endsAt = Date.now() + timer.remaining * 1000;
+        log(`⏱ timer started at ${fmtTime(timer.remaining)}`);
+        break;
+      case 'pause':
+        if (!timer.running) break;
+        timer.remaining = timerLeft(); timer.running = false;
+        log(`⏱ timer paused at ${fmtTime(timer.remaining)}`);
+        break;
+      case 'add':
+        if (!timer.active || !n) break;
+        if (timer.ended && n > 0) { timer.ended = false; timer.remaining = 0; }
+        timerAdd(n, 'streamer', 'by hand');
+        break;
+      case 'off':
+        Object.assign(timer, { active: false, running: false, ended: false, remaining: 0, endsAt: 0 });
+        log('⏱ timer turned off');
+        break;
+    }
+    timerChanged();
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(timerView(true)));
+  });
+}
+
+const TIMER_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Subathon timer</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  /* OBS / TikTok LIVE Studio browser source. ?size=96 sets the digit size,
+     ?bg=0 makes the background see-through, ?label=0 hides the label. */
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  body { --s: 72px; font-family: system-ui, "Segoe UI", sans-serif; color: #fff; display: flex; justify-content: center; }
+  .box { display: inline-flex; flex-direction: column; align-items: center; padding: calc(var(--s) * .12) calc(var(--s) * .35);
+    background: rgba(8,10,14,.88); border: 3px solid #e3b341; border-radius: calc(var(--s) * .2); margin: calc(var(--s) * .42) 6px 6px; position: relative; }
+  .box.clear { background: transparent; border-color: transparent; }
+  .lab { font-weight: 800; letter-spacing: .14em; font-size: calc(var(--s) * .22); color: #e3b341; }
+  .t { font: 800 var(--s)/1 ui-monospace, "Cascadia Mono", Consolas, monospace; font-variant-numeric: tabular-nums; text-shadow: 0 3px 4px #000; }
+  .paused .t { opacity: .55; } .ended { border-color: #e5534b; } .ended .t { color: #ff6b61; }
+  .pop { position: absolute; right: -0.2em; top: 0; transform: translateY(-40%); background: #3fb950; color: #04130a; font-weight: 800;
+    font-size: calc(var(--s) * .26); padding: .15em .5em; border-radius: 999px; white-space: nowrap; opacity: 0; transition: opacity .4s, transform .4s; }
+  .pop.on { opacity: 1; transform: translateY(-62%); }
+  .off { font-size: 16px; color: #9fb3c8; padding: 8px; }
+</style></head><body>
+<div class="box" id="box"><div class="lab" id="lab">TIME LEFT</div><div class="t" id="t">–:––:––</div><div class="pop" id="pop"></div></div>
+<script>
+const q = new URLSearchParams(location.search);
+if (q.get('size')) document.body.style.setProperty('--s', (+q.get('size') || 72) + 'px');
+if (q.get('bg') === '0') document.getElementById('box').classList.add('clear');
+if (q.get('label') === '0') document.getElementById('lab').hidden = true;
+const box = document.getElementById('box'), t = document.getElementById('t'), pop = document.getElementById('pop');
+let lastId = null, popT = null, base = null, baseAt = 0;
+const fmt = (s) => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60; return h + ':' + String(m).padStart(2, '0') + ':' + String(x).padStart(2, '0'); };
+const short = (s) => s < 60 ? s + 's' : s < 3600 ? Math.floor(s / 60) + 'm' + (s % 60 ? ' ' + s % 60 + 's' : '') : fmt(s);
+function draw() {
+  if (!base) return;
+  const left = base.running ? base.remaining - (Date.now() - baseAt) / 1000 : base.remaining;
+  t.textContent = base.ended ? 'TIME!' : fmt(Math.ceil(left));
+}
+async function poll() {
+  try {
+    const d = await (await fetch('/timer.json', { cache: 'no-store' })).json();
+    base = d; baseAt = Date.now();
+    box.hidden = !d.active;
+    box.className = 'box' + (q.get('bg') === '0' ? ' clear' : '') + (d.ended ? ' ended' : !d.running ? ' paused' : '');
+    const a = d.lastAdd;
+    if (a && a.id !== lastId) {
+      if (lastId !== null && a.seconds > 0) {
+        pop.textContent = '+' + short(a.seconds) + (a.user && a.user !== 'streamer' ? ' · ' + a.user : '');
+        pop.classList.add('on'); clearTimeout(popT); popT = setTimeout(() => pop.classList.remove('on'), 4000);
+      }
+      lastId = a.id;
+    } else if (!a && lastId === null) lastId = 0;
+    draw();
+  } catch (e) { t.textContent = '–:––:––'; }
+  setTimeout(poll, 1000);
+}
+setInterval(draw, 250); poll();
+</script></body></html>`;
+
+const CONTROL_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Subathon timer control</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #12151b; color: #e8edf3; font: 15px/1.45 system-ui, "Segoe UI", sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 18px 16px 40px; }
+  h1 { font-size: 18px; margin: 0 0 4px; } p.hint { color: #9fb3c8; margin: 4px 0 14px; font-size: 13px; }
+  .clock { font: 800 56px/1 ui-monospace, Consolas, monospace; text-align: center; padding: 14px; border-radius: 12px; background: #0b0d11;
+    border: 2px solid #e3b341; font-variant-numeric: tabular-nums; }
+  .state { text-align: center; color: #9fb3c8; margin: 6px 0 16px; font-size: 13px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 10px 0; }
+  input { width: 64px; padding: 8px; border-radius: 8px; border: 1px solid #2c3440; background: #0b0d11; color: inherit; font-size: 15px; }
+  button { padding: 9px 14px; border-radius: 8px; border: 1px solid #2c3440; background: #1d232c; color: inherit; font: inherit; cursor: pointer; }
+  button:hover { background: #262e39; } button.go { background: #23863633; border-color: #2ea043; } button.stop { background: #da363322; border-color: #da3633; }
+  button.set { background: #e3b34122; border-color: #e3b341; }
+  h2 { font-size: 14px; margin: 22px 0 6px; color: #e3b341; letter-spacing: .04em; }
+  ul { list-style: none; padding: 0; margin: 0; font-size: 13px; } li { padding: 5px 0; border-bottom: 1px solid #1f252e; display: flex; justify-content: space-between; gap: 10px; }
+  li .s { color: #3fb950; font-variant-numeric: tabular-nums; } li .s.neg { color: #ff6b61; }
+  .links { font-size: 13px; color: #9fb3c8; } code { color: #e8edf3; }
+</style></head><body><main>
+<h1>Subathon timer</h1>
+<p class="hint">Every coin donated adds <b id="per">1 second</b> while the timer is set. When it reaches 0:00:00 it stops.</p>
+<div class="clock" id="clock">–:––:––</div>
+<div class="state" id="state">Not set</div>
+
+<div class="row"><b style="min-width:92px">Start at</b>
+  <input id="h" type="number" min="0" value="1"> h <input id="m" type="number" min="0" max="59" value="0"> m
+  <button class="set" id="set">Set timer</button></div>
+<div class="row"><button class="go" id="start">▶ Start</button><button class="stop" id="pause">⏸ Pause</button></div>
+<div class="row"><b style="min-width:92px">Adjust</b>
+  <button data-add="60">+1 min</button><button data-add="600">+10 min</button><button data-add="3600">+1 hour</button>
+  <button data-add="-60">−1 min</button><button data-add="-600">−10 min</button></div>
+
+<h2>RECENT</h2>
+<ul id="log"><li>Nothing yet</li></ul>
+<div class="row" style="margin-top:24px"><button id="off">Turn the timer off</button></div>
+<p class="links">On stream: add a browser source with <code>http://localhost:${'${location.port}'}/timer</code>
+(width 600, height 190). <code>?size=96</code> makes it bigger, <code>?bg=0</code> removes the box.</p>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const fmt = (s) => { s = Math.max(0, Math.round(s)); const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, x = s % 60; return h + ':' + String(m).padStart(2, '0') + ':' + String(x).padStart(2, '0'); };
+const short = (s) => { const a = Math.abs(s); return (s < 0 ? '−' : '+') + (a < 60 ? a + 's' : a < 3600 ? Math.floor(a / 60) + 'm' + (a % 60 ? ' ' + a % 60 + 's' : '') : fmt(a)); };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+document.querySelector('.links code').textContent = 'http://localhost:' + location.port + '/timer';
+let d = null, at = 0;
+function paint() {
+  if (!d) return;
+  const left = d.running ? d.remaining - (Date.now() - at) / 1000 : d.remaining;
+  $('clock').textContent = !d.active ? '–:––:––' : d.ended ? 'TIME!' : fmt(Math.ceil(left));
+  $('state').textContent = !d.active ? 'Not set: choose a starting time and press Set timer'
+    : d.ended ? 'Finished. Use Adjust to add time and keep going.'
+    : (d.running ? 'Running' : 'Paused') + ' · ' + d.coins.toLocaleString() + ' coins so far · ' + fmt(d.added) + ' added';
+  $('per').textContent = d.secondsPerCoin === 1 ? '1 second' : d.secondsPerCoin + ' seconds';
+  $('log').innerHTML = d.log.length ? d.log.map((l) => '<li><span>' + esc(l.user || '') + (l.why ? ' <small style="color:#9fb3c8">' + esc(l.why) + '</small>' : '') +
+    '</span><span class="s' + (l.seconds < 0 ? ' neg' : '') + '">' + short(l.seconds) + '</span></li>').join('') : '<li>Nothing yet</li>';
+}
+async function call(action, seconds) {
+  try {
+    const r = await fetch('/timer/api', { method: 'POST', headers: { 'content-type': 'application/json', 'x-ccbridge': '1' }, body: JSON.stringify({ action, seconds }) });
+    d = await r.json(); at = Date.now(); paint();
+  } catch (e) { $('state').textContent = 'Can\\'t reach the bridge. Is its window open?'; }
+}
+async function poll() {
+  try { d = await (await fetch('/timer.json', { cache: 'no-store' })).json(); at = Date.now(); paint(); }
+  catch (e) { $('state').textContent = 'Can\\'t reach the bridge. Is its window open?'; }
+  setTimeout(poll, 1000);
+}
+$('set').onclick = () => {
+  const s = (+$('h').value || 0) * 3600 + (+$('m').value || 0) * 60;
+  if (s <= 0) { $('state').textContent = 'Choose a starting time first.'; return; }
+  if (d && d.active && !d.ended && !confirm('Replace the current timer (' + fmt(d.remaining) + ' left) with ' + fmt(s) + '?')) return;
+  call('set', s);
+};
+$('start').onclick = () => call('start');
+$('pause').onclick = () => call('pause');
+$('off').onclick = () => { if (confirm('Turn the timer off? It disappears from the stream.')) call('off'); };
+document.querySelectorAll('[data-add]').forEach((b) => { b.onclick = () => call('add', +b.dataset.add); });
+setInterval(paint, 250); poll();
 </script></body></html>`;
 
 // ── TikFinity source ───────────────────────────────────────────────────────
@@ -370,7 +642,7 @@ function onTikFinity(text) {
     const giftType = d.giftType ?? d.giftDetails?.giftType;
     if (giftType === 1 && d.repeatEnd === false) return;   // streak still going: wait for the final count
     const name = d.giftName || d.giftDetails?.giftName || d.extendedGiftInfo?.name || '';
-    onGift(user, name, d.giftId, d.repeatCount || 1);
+    onGift(user, name, d.giftId, d.repeatCount || 1, d.diamondCount ?? d.giftDetails?.diamondCount);
   } else if (ev === 'like') onLike(user, d.likeCount || 1);
   else if (ev === 'follow') onSocial('follow', user);
   else if (ev === 'share') onSocial('share', user);
@@ -422,7 +694,7 @@ async function startTikTok() {
     const type = d.giftDetails?.giftType;
     if (type === 1 && !d.repeatEnd) return;         // streak still going: wait for the final count
     const name = d.giftDetails?.giftName || d.extendedGiftInfo?.name || '';
-    onGift(d.user?.uniqueId || d.user?.nickname || 'someone', name, d.giftId, d.repeatCount || 1);
+    onGift(d.user?.uniqueId || d.user?.nickname || 'someone', name, d.giftId, d.repeatCount || 1, d.giftDetails?.diamondCount ?? d.diamondCount);
   });
   conn.on('like', (d) => onLike(d.user?.uniqueId || 'someone', d.likeCount || 1));
   conn.on('follow', (d) => onSocial('follow', d.user?.uniqueId || 'someone'));
@@ -456,6 +728,7 @@ function startTest() {
   log('TEST MODE. Commands:');
   log('  <effect_id>            e.g. heal_full, invert, rupees_minus');
   log('  gift <name> [count]    e.g. gift Rose 3   (uses mapping.json)');
+  log('  coins <n>              a donation worth n coins (tiers + timer)');
   log('  like <n> | follow | share | list');
   const rl = readline.createInterface({ input: process.stdin });
   rl.on('line', (line) => {
@@ -464,7 +737,8 @@ function startTest() {
     if (cmd === 'gift') {
       const count = /^\d+$/.test(rest.at(-1) || '') ? +rest.pop() : 1;
       onGift('tester', rest.join(' '), 0, count);
-    } else if (cmd === 'like') onLike('tester', +(rest[0] || 1));
+    } else if (cmd === 'coins') onGift('tester', '(test donation)', 0, 1, +(rest[0] || 0));
+    else if (cmd === 'like') onLike('tester', +(rest[0] || 1));
     else if (cmd === 'follow' || cmd === 'share') { cooldown.clear(); onSocial(cmd, 'tester'); }
     else if (cmd === 'list') log(knownEffects ? [...knownEffects].join(', ') : 'connect the game first to see its effects');
     else fire(cmd, 'tester', '');
@@ -474,6 +748,8 @@ function startTest() {
 server.listen(cfg.port, '127.0.0.1', () => {
   log(`bridge listening on ws://localhost:${cfg.port}`);
   log(`scrolling gift list for OBS: http://localhost:${cfg.port}/ticker`);
+  log(`subathon timer: http://localhost:${cfg.port}/timer   (controls: http://localhost:${cfg.port}/timer/control)`);
+  if (timer.active) log(`⏱ timer restored: ${fmtTime(timer.remaining)} left${timer.ended ? ' (finished)' : ', paused. Press Start on the control page'}`);
   if (TEST) startTest();
   else if (cfg.source === 'tikfinity') startTikFinity();
   else if (cfg.source === 'direct') startTikTok();

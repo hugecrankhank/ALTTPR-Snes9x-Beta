@@ -93,6 +93,7 @@ PART 2 - EVERY TIME YOU STREAM
    A black window opens. Within a few seconds it should say:
      bridge listening on ws://localhost:21214
      scrolling gift list for OBS: http://localhost:21214/ticker
+     subathon timer: http://localhost:21214/timer
      connected to TikFinity on port 21213
    Keep this window open the whole stream. Closing it stops the effects.
 
@@ -153,8 +154,16 @@ This folder comes set up with this gift list:
     Boxing Gloves ......... No sword
     Fruit Friends ......... Magic locked
 
-  NEW SEED
-    Galaxy ................ Ends this game and starts a new seed
+  BIG DONATIONS: NEW SEEDS (by total coins in one donation)
+    1,000+ coins .......... New seed with the same settings
+                            (Galaxy is 1,000 coins, so it does this)
+    1,200+ coins .......... New seed from a RANDOM PRESET
+    2,000+ coins .......... CHAOS seed
+  A donation that reaches one of these does that instead of its gift's
+  normal effect. A streak counts as one donation (e.g. 50 x 20 coins).
+
+  SUBATHON CLOCK
+    Every coin ............ +1 second on the clock (Part 6)
 
   ALSO
     Every 300 likes ....... +1 heart
@@ -162,13 +171,33 @@ This folder comes set up with this gift list:
     Share ................. +10 bombs
     (follows and shares count once per viewer every 10 minutes)
 
-About the New Seed (Galaxy):
-  It's off until you tick "Allow seed reroll" in the Crowd effects menu.
-  When it's sent, a banner on the game shows who sent it and counts down
-  10 seconds. During the countdown a "Cancel new seed" button appears in
-  the Crowd effects menu if you want to keep your game. Then the banner
-  shows the new seed being made, and the new game loads with its code.
-  The banner can be turned off in the same menu.
+About the new seeds:
+  All three are off until you tick "Allow seed reroll" in the Crowd
+  effects menu. When one is sent, a banner on the game shows who sent it
+  and counts down 10 seconds. During the countdown a "Cancel new seed"
+  button appears in the Crowd effects menu if you want to keep your game.
+  Then the banner shows the new seed being made, and the new game loads
+  with its code. The banner can be turned off in the same menu.
+
+  Same settings: whatever the Randomizer bar is set to right now.
+
+  Random preset: picks one preset from the Saved presets menu, and the
+  banner and feed say which one (e.g. "Trinity · AVIANART").
+    - If you've starred (★) any presets, it only picks from your stars.
+      That's the easy way to choose which presets viewers can land on.
+    - Without stars it picks from every preset except glitched-logic ones
+      (HMG, OWG, No Logic, Anti-Logic), which can need glitches to finish.
+
+  CHAOS: picks alttpr.com, Kara's branch or AVIANART at random, then sets
+  every one of that site's menus at random. The banner shows the site and
+  the main settings it landed on. It never picks glitched logic, race
+  seeds, AVIANART's timer modes, or Kara's permanent one-hit-KO/gloom.
+  If a pick can't be generated, it picks again (up to 3 tries).
+
+  Heads-up: a random preset or chaos roll leaves the Randomizer bar on
+  those settings, so the next "same settings" roll repeats them. Save your
+  usual setup as a preset (Save as preset) so you can switch back to it in
+  one click.
 
 About Random sprite / Random MSU pack:
   Random MSU picks from the music packs you've starred in the game's
@@ -209,7 +238,45 @@ picture for a new gift, save it in "icons" with the gift's name.
 
 
 =========================================================================
-PART 6 - CHANGING WHICH GIFT DOES WHAT
+PART 6 - THE SUBATHON CLOCK
+=========================================================================
+
+A countdown clock for the stream: you choose how long it starts at, and
+every coin viewers donate adds 1 second. You keep streaming until it
+reaches 0:00:00.
+
+1. Start the bridge (Part 2).
+2. Open the control page in your browser:
+       http://localhost:21214/timer/control
+3. Type the starting time (hours and minutes) and press "Set timer".
+4. Press "Start" when you go live. "Pause" stops the clock (donations
+   still add time while it's paused).
+5. Use the Adjust buttons to add or take away time by hand.
+
+Showing it on stream:
+  - On the game: a small clock appears at the bottom of the game picture
+    with "+8m 20s name" when someone adds time. Turn it off in the game's
+    Crowd effects menu ("Show subathon clock on game").
+  - In OBS / TikTok LIVE Studio: add a browser/link source with
+        http://localhost:21214/timer
+    width 600, height 190.  ?size=96 makes it bigger, ?bg=0 removes the
+    box, ?label=0 hides "TIME LEFT".
+
+When it reaches 0:00:00 it shows TIME! and stops. Donations after that
+don't add time; if you want to keep going, use Adjust (+10 min etc.)
+and press Start.
+
+The clock is saved in timer-state.json in this folder. If you close the
+bridge (or the PC restarts), it comes back paused at the same time:
+press Start on the control page to continue.
+
+To give more or less time per coin, change "secondsPerCoin" in
+mapping.json ("timer" section, Part 7). To turn the clock off for good,
+set "enabled": false there.
+
+
+=========================================================================
+PART 7 - CHANGING WHICH GIFT DOES WHAT
 =========================================================================
 
 Right-click mapping.json -> Open with -> Notepad.
@@ -271,9 +338,21 @@ All effect names (use these on the right side):
     sprite_roll    Random Link sprite
     sprite_fav     Random sprite from your starred favourites
     msu_roll       Random MSU-1 pack from your starred packs
-    seed_roll      New seed (needs "Allow seed reroll" ticked)
+    seed_roll      New seed, same settings      } need "Allow seed
+    seed_preset    New seed, random preset      }  reroll" ticked
+    seed_chaos     New CHAOS seed               }
 
 Other settings in mapping.json:
+  "coinTiers": [ { "coins": 1000, "effect": "seed_roll" }, ... ]
+                   a donation worth at least that many coins does that
+                   effect instead of its gift's own (highest one reached
+                   wins). Change the numbers or effects as you like; any
+                   effect name works here, not just seeds.
+  "timer": { "enabled": true, "secondsPerCoin": 1 }
+                   the subathon clock (Part 6)
+  "giftCoins": { "Galaxy": 1000 }
+                   only needed if the black window doesn't show
+                   "= N coins" for a gift: tells the bridge what it's worth
   "durations": { "one_hit": 20, "no_magic": 20, "cucco_storm": 20 }
                    how many seconds timed effects last
   "likes": { "every": 300, "effect": "heal_1" }
@@ -296,7 +375,7 @@ Double-clicking start-bridge.bat says "Node.js is not installed"
 
 The black window shows an error about mapping.json when it starts
   mapping.json has a typo (a missing quote or comma). Open it in
-  Notepad and compare with the examples in Part 6.
+  Notepad and compare with the examples in Part 7.
 
 "can't reach TikFinity on port 21213"
   TikFinity isn't open, isn't logged in, or its port isn't 21213.
@@ -339,6 +418,15 @@ The scrolling list in OBS is blank or says "Waiting for the bridge"
 
 New seed doesn't happen
   Tick "Allow seed reroll" in the game's Crowd effects menu.
+
+A big donation didn't trigger a new seed / didn't add time
+  The black window should show "= N coins" next to every gift. If it
+  doesn't, TikFinity isn't sending coin values: add the gift's value to
+  "giftCoins" in mapping.json. Time is only added once the clock has been
+  set (Part 6) and while it hasn't run out.
+
+"Can't reach the bridge" on the timer page
+  The black window isn't open. Start it, then refresh the page.
 
 
 =========================================================================
