@@ -92,7 +92,8 @@ damage challenge; up to 3 tries). The randomizer side is
 The bridge keeps a countdown (`timer-state.json`, restored paused on restart).
 Control page: `http://localhost:21214/timer/control` (set, start, pause,
 adjust; it sends an `x-ccbridge` header, which other sites can't). Every coin
-adds `timer.secondsPerCoin` seconds while the clock is set and not finished.
+adds `1 / timer.coinsPerSecond` seconds (fractions carry over between donations;
+the older `secondsPerCoin` still works) while the clock is set and not finished.
 It shows on the game (bottom centre, can be turned off in Crowd effects) and
 as an OBS source at `/timer` (`?size=`, `?bg=0`, `?label=0`).
 

@@ -32,7 +32,7 @@
     { "coins": 2000, "effect": "seed_chaos",  "label": "CHAOS seed" }
   ],
 
-  "timer": { "enabled": true, "secondsPerCoin": 1 },
+  "timer": { "enabled": true, "coinsPerSecond": 1 },
 
   "durations": { "cucco_storm": 20, "one_hit": 20, "no_magic": 20 },
 

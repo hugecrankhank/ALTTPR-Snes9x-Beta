@@ -16,9 +16,10 @@ NEW
    Still needs "Allow seed reroll" ticked in the game's Crowd effects menu.
 
 2. Subathon clock
-   You choose a starting time, every coin donated adds 1 second, and you
-   stream until it hits 0:00:00. It shows at the bottom of the game, and
-   there's an OBS / LIVE Studio version too.
+   You choose a starting time, donations add time, and you stream until
+   it hits 0:00:00. "coinsPerSecond" sets how many coins buy 1 second
+   (1 = 3,600 coins an hour, 2 = 7,200, 4 = 14,400...). It shows at the
+   bottom of the game, and there's an OBS / LIVE Studio version too.
 
 3. Instant death (insta_kill) and Extra enemy (enemy_spawn) effects, if
    you haven't added them yet. Map them to any gift in mapping.json.
@@ -37,7 +38,7 @@ HOW TO UPDATE
     { "coins": 2000, "effect": "seed_chaos",  "label": "CHAOS seed" }
   ],
 
-  "timer": { "enabled": true, "secondsPerCoin": 1 },
+  "timer": { "enabled": true, "coinsPerSecond": 1 },
 
    (Or just use the mapping.json from the zip: it already has them, along
    with the gift chart. It replaces any other changes you made to yours.)

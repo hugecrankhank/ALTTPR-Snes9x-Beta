@@ -263,8 +263,8 @@ function tickerData() {
   }
   const tm = cfg.timer || {};
   if (tm.enabled !== false && t.showTimer !== false && timer.active) {
-    const per = +tm.secondsPerCoin || 1;
-    items.push({ gift: 'Every coin', label: per === 1 ? '+1 second on the clock' : `+${per} seconds on the clock`, secs: 0, icon: null, emoji: '⏱' });
+    const [g, l] = rateText().split(' = ');
+    items.push({ gift: g, label: l + ' on the clock', secs: 0, icon: null, emoji: '⏱' });
   }
   return { title: t.title ?? 'GIFT EFFECTS', speed: t.speed || 70, items };
 }
@@ -327,7 +327,7 @@ poll(); requestAnimationFrame(step);
 
 // ── subathon timer ─────────────────────────────────────────────────────────
 // The streamer sets a starting time on http://localhost:PORT/timer/control and
-// starts it; every coin donated adds "secondsPerCoin" (mapping.json "timer").
+// starts it; donations add time at "coinsPerSecond" (mapping.json "timer").
 // When it reaches 0 it stops and says TIME!. The time is saved to
 // timer-state.json, so closing the bridge doesn't lose it (it comes back
 // paused).
@@ -344,7 +344,7 @@ function timerLeft() { return timer.running ? Math.max(0, (timer.endsAt - Date.n
 function timerView(full) {
   const v = { active: timer.active, running: timer.running, ended: timer.ended, remaining: Math.ceil(timerLeft()),
     lastAdd: timer.log.length ? timer.log[timer.log.length - 1] : null };
-  if (full) Object.assign(v, { added: timer.added, coins: timer.coins, log: timer.log.slice(-12).reverse(), secondsPerCoin: +(cfg.timer || {}).secondsPerCoin || 1 });
+  if (full) Object.assign(v, { added: timer.added, coins: timer.coins, log: timer.log.slice(-12).reverse(), rate: rateText(), coinsPerSecond: coinsPerSecond() });
   return v;
 }
 let timerSaveT = null;
@@ -370,13 +370,34 @@ function timerAdd(seconds, user, why) {
   if (timer.log.length > 30) timer.log.shift();
   timerChanged();
 }
+// How much time a coin buys. mapping.json "timer": "coinsPerSecond": 4 means
+// it takes 4 coins to add 1 second (the older "secondsPerCoin": 2 means each
+// coin adds 2 seconds). Fractions add up across donations, so with 4 coins
+// per second four 1-coin Roses still add a second between them.
+function coinsPerSecond() {
+  const tm = cfg.timer || {};
+  if (+tm.coinsPerSecond > 0) return +tm.coinsPerSecond;
+  if (+tm.secondsPerCoin > 0) return 1 / +tm.secondsPerCoin;
+  return 1;
+}
+function rateText() {
+  const c = coinsPerSecond();
+  if (c === 1) return 'Every coin = +1 second';
+  if (c < 1) { const s = Math.round(1 / c * 100) / 100; return `Every coin = +${s} seconds`; }
+  return `Every ${Math.round(c * 100) / 100} coins = +1 second`;
+}
+let timerFrac = 0;
 function timerAddCoins(user, coins) {
   const tm = cfg.timer || {};
   if (tm.enabled === false || !coins || !timer.active || timer.ended) return;
-  const secs = coins * (+tm.secondsPerCoin || 1);
+  const exact = coins / coinsPerSecond() + timerFrac;
+  const secs = Math.floor(exact);
+  timerFrac = exact - secs;
   timer.coins += coins;
-  timerAdd(secs, user, `${coins} coins`);
-  log(`  ⏱ +${fmtTime(secs)} from ${user} (clock: ${fmtTime(timerLeft())})`);
+  if (secs > 0) {
+    timerAdd(secs, user, `${coins} coins`);
+    log(`  ⏱ +${fmtTime(secs)} from ${user} (clock: ${fmtTime(timerLeft())})`);
+  } else log(`  ⏱ ${coins} coins saved toward the next second`);
 }
 setInterval(() => {
   if (!timer.running) return;
@@ -506,7 +527,7 @@ const CONTROL_HTML = `<!doctype html><html><head><meta charset="utf-8"><title>Su
   .links { font-size: 13px; color: #9fb3c8; } code { color: #e8edf3; }
 </style></head><body><main>
 <h1>Subathon timer</h1>
-<p class="hint">Every coin donated adds <b id="per">1 second</b> while the timer is set. When it reaches 0:00:00 it stops.</p>
+<p class="hint"><b id="per">Every coin = +1 second</b> while the timer is set (change it with "coinsPerSecond" in mapping.json). When it reaches 0:00:00 it stops.</p>
 <div class="clock" id="clock">–:––:––</div>
 <div class="state" id="state">Not set</div>
 
@@ -538,7 +559,7 @@ function paint() {
   $('state').textContent = !d.active ? 'Not set: choose a starting time and press Set timer'
     : d.ended ? 'Finished. Use Adjust to add time and keep going.'
     : (d.running ? 'Running' : 'Paused') + ' · ' + d.coins.toLocaleString() + ' coins so far · ' + fmt(d.added) + ' added';
-  $('per').textContent = d.secondsPerCoin === 1 ? '1 second' : d.secondsPerCoin + ' seconds';
+  $('per').textContent = d.rate + ' (' + Math.round(3600 * d.coinsPerSecond).toLocaleString() + ' coins per hour)';
   $('log').innerHTML = d.log.length ? d.log.map((l) => '<li><span>' + esc(l.user || '') + (l.why ? ' <small style="color:#9fb3c8">' + esc(l.why) + '</small>' : '') +
     '</span><span class="s' + (l.seconds < 0 ? ' neg' : '') + '">' + short(l.seconds) + '</span></li>').join('') : '<li>Nothing yet</li>';
 }

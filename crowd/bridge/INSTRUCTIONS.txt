@@ -163,7 +163,8 @@ This folder comes set up with this gift list:
   normal effect. A streak counts as one donation (e.g. 50 x 20 coins).
 
   SUBATHON CLOCK
-    Every coin ............ +1 second on the clock (Part 6)
+    Every coin ............ +1 second on the clock (Part 6; the rate
+                            can be changed)
 
   ALSO
     Every 300 likes ....... +1 heart
@@ -272,9 +273,19 @@ The clock is saved in timer-state.json in this folder. If you close the
 bridge (or the PC restarts), it comes back paused at the same time:
 press Start on the control page to continue.
 
-To give more or less time per coin, change "secondsPerCoin" in
-mapping.json ("timer" section, Part 7). To turn the clock off for good,
-set "enabled": false there.
+How much a second costs: "coinsPerSecond" in mapping.json ("timer"
+section). It's how many coins it takes to add 1 second:
+
+    "coinsPerSecond": 1     1 coin  = 1 second    3,600 coins per hour
+    "coinsPerSecond": 2     2 coins = 1 second    7,200 coins per hour
+    "coinsPerSecond": 4     4 coins = 1 second   14,400 coins per hour
+    "coinsPerSecond": 0.5   1 coin  = 2 seconds   1,800 coins per hour
+
+So if 3,600 coins an hour is about $18 to you, 2 is about $36 an hour
+and 4 is about $72 an hour. Small gifts add up: with 4, four 1-coin
+Roses add one second between them. It changes as soon as you save
+mapping.json, and the control page shows the current rate.
+To turn the clock off for good, set "enabled": false there.
 
 
 =========================================================================
@@ -350,8 +361,9 @@ Other settings in mapping.json:
                    effect instead of its gift's own (highest one reached
                    wins). Change the numbers or effects as you like; any
                    effect name works here, not just seeds.
-  "timer": { "enabled": true, "secondsPerCoin": 1 }
-                   the subathon clock (Part 6)
+  "timer": { "enabled": true, "coinsPerSecond": 1 }
+                   the subathon clock: how many coins add 1 second
+                   (Part 6)
   "giftCoins": { "Galaxy": 1000 }
                    only needed if the black window doesn't show
                    "= N coins" for a gift: tells the bridge what it's worth
