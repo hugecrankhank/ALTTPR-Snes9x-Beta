@@ -192,7 +192,9 @@ About the new seeds:
   every one of that site's menus at random. The banner shows the site and
   the main settings it landed on. It never picks glitched logic, race
   seeds, AVIANART's timer modes, or Kara's permanent one-hit-KO/gloom.
-  If a pick can't be generated, it picks again (up to 3 tries).
+  If a pick can't be generated, or is still being made after 3 minutes
+  (big shuffles on Kara's server can take a long time), it picks again,
+  up to 3 tries. The last try is allowed to take as long as it needs.
 
   Heads-up: a random preset or chaos roll leaves the Randomizer bar on
   those settings, so the next "same settings" roll repeats them. Save your

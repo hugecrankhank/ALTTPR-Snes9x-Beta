@@ -216,6 +216,10 @@
   //   chaos   a random generator with every one of its menus randomized
   // (the last two use the randomizer's own helpers, randomizer/app.js crowdApi)
   var REROLL_SECS = 10, MAX_TRIES = 3;
+  // A random preset or chaos pick that's still being made after this long is
+  // given up on (the randomizer's Stop button) and another one is picked, so
+  // a heavy combination doesn't hold the stream up for many minutes.
+  var GIVE_UP_SECS = 180;
   var ROLL_KIND = {
     same:   { count: 'NEW SEED IN ', roll: 'Rolling a new seed…' },
     preset: { count: 'RANDOM PRESET IN ', roll: 'Rolling a random preset…' },
@@ -307,7 +311,7 @@
   // random preset or chaos roll that fails picks again (up to 3 tries).
   var rollWatch = null;
   function watchRoll() {
-    var started = Date.now(), seenBusy = false;
+    var started = Date.now(), seenBusy = false, gaveUp = false;
     var title = ROLL_KIND[rerollMode].roll;
     var detail = rerollPick;
     clearInterval(rollWatch);
@@ -317,8 +321,17 @@
       var secs = Math.round((Date.now() - started) / 1000);
       if (gen && gen.disabled) seenBusy = true;
       if (!seenBusy && secs < 3) { banner('roll', title, 'Starting', 0, 0, detail); return; }
-      if (gen && gen.disabled && secs < 900) {
-        banner('roll', title, (text.replace(/\s*\d+s$/, '') || 'Working') + ' · ' + secs + 's', 0, 0, detail);
+      var stop = document.getElementById('r-stop');
+      var canGiveUp = rerollMode !== 'same' && rerollTry < MAX_TRIES && stop && !stop.hidden;
+      if (gen && gen.disabled && canGiveUp && secs >= GIVE_UP_SECS && !gaveUp) {
+        gaveUp = true;
+        feed('Too slow, picking again', 'info');
+        stop.click();
+        return;
+      }
+      if (gen && gen.disabled && (secs < 900 || gaveUp)) {
+        banner('roll', title, (text.replace(/\s*\d+s$/, '') || 'Working') + ' · ' + secs + 's' +
+          (canGiveUp && !gaveUp ? ' (new pick at ' + GIVE_UP_SECS + 's)' : ''), 0, 0, detail);
         return;
       }
       clearInterval(rollWatch); rollWatch = null;
@@ -328,9 +341,9 @@
         var sub = (rerollBy ? 'Courtesy of ' + rerollBy : 'Good luck') + (code ? ' · code ' + code.trim() : '');
         var head = rerollMode === 'chaos' ? 'CHAOS seed ready!' : rerollMode === 'preset' ? 'Random preset ready!' : 'New seed ready!';
         banner('done-ok', head, sub, rerollPick ? 10000 : 6000, 0, detail);
-      } else if (rerollMode !== 'same' && rerollTry < MAX_TRIES && !/^Stopped/.test(text)) {
+      } else if (rerollMode !== 'same' && rerollTry < MAX_TRIES && (gaveUp || !/^Stopped/.test(text))) {
         feed('That one didn\'t work, picking again (' + (rerollTry + 1) + '/' + MAX_TRIES + ')', 'info');
-        banner('roll', ROLL_KIND[rerollMode].roll, 'That pick didn\'t work, picking again', 0);
+        banner('roll', ROLL_KIND[rerollMode].roll, gaveUp ? 'That one was taking too long, picking again' : 'That pick didn\'t work, picking again', 0);
         setTimeout(rollNow, 800);
       } else {
         banner('done-bad', 'Seed reroll failed', text || 'Kept the current game', 6000);
