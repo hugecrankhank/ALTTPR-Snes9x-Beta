@@ -235,7 +235,14 @@
     header.appendChild(gear);
     // the randomizer panel sits between the header (which grows when ⚙ opens)
     // and the tracker toggles, so the toggles stay usable while it's open
+    // room for the pinned ⚙: the header's right padding (16px), its width and the gap
+    var syncGear = function () {
+      if (!on) return;
+      var gap = parseFloat(getComputedStyle(header).columnGap) || 0;
+      document.body.style.setProperty('--phone-gear-room', (16 + gear.offsetWidth + gap) + 'px');
+    };
     var syncHeader = function () {
+      syncGear();
       var bs = document.body.style;
       bs.setProperty('--phone-header-h', Math.round(header.getBoundingClientRect().bottom) + 'px');
       bs.setProperty('--phone-tabs-top', Math.round(bar.getBoundingClientRect().top) + 'px');
@@ -322,6 +329,9 @@
     'body.phone header { gap: 8px 12px; padding-top: max(6px, env(safe-area-inset-top)) !important; padding-bottom: 6px; }',
     'body.phone header h1 { font-size: 14px; }',
     'body.phone #phone-gear { display: inline-block; margin-left: auto; min-width: 44px; min-height: 34px; font-size: 18px; }',
+    // ⚙ stays put when the menu opens (pinned top right, room kept for it)
+    'body.phone header { position: relative; padding-right: var(--phone-gear-room, 60px) !important; }',
+    'body.phone #phone-gear { position: absolute; right: var(--phone-gear-right, 16px); top: max(6px, env(safe-area-inset-top)); margin: 0; z-index: 1; }',
     'body.phone-menu #phone-gear { border-color: var(--accent); }',
     // the randomizer bar opens as a panel over the game, under the header, and
     // scrolls inside itself, so it never pushes the tracker off the screen

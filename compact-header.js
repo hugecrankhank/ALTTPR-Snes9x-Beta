@@ -77,6 +77,10 @@
     'body.hdr-compact #reroll-btn ~ #hdr-gear { margin-left: 0; }',
     'body.hdr-compact:not(.hdr-menu) #pad-status span, body.hdr-compact:not(.hdr-menu) #link-status span { display: none; }',
     'body.hdr-compact #hdr-gear { display: inline-block; margin-left: auto; min-width: 44px; min-height: 34px; font-size: 18px; }',
+    // ⚙ stays put when the menu opens: pinned to the header's top right, with
+    // room kept for it, so the rest of the header wraps around it
+    'body.hdr-compact header { position: relative; padding-right: 72px !important; }',
+    'body.hdr-compact #hdr-gear { position: absolute; right: 16px; top: max(6px, env(safe-area-inset-top)); margin: 0; z-index: 1; }',
     'body.hdr-compact.hdr-menu #hdr-gear { border-color: var(--accent); }'
   ].join('\n');
 
