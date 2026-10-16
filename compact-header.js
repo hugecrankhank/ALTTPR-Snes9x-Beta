@@ -1,6 +1,7 @@
 /*
  * iPad header: the same compact header as the phone (phone.js) while its
  * menu is closed. Title, the quick buttons (🎲 Reroll, Sprite, ★, Music, 🎲♪),
+ * the Layout menu,
  * the controller / game status as dots, and a ⚙ that opens everything else
  * (Randomizer, Load ROM, layout, tracker settings, map key...).
  *
@@ -65,7 +66,7 @@
     refit();
   }
 
-  var KEEP = ['#pad-status', '#link-status', '#hdr-gear', '#reroll-btn', '#sprite-btn', '#sprite-fav-btn', '#music-btn', '#music-roll-btn'];
+  var KEEP = ['#pad-status', '#link-status', '#hdr-gear', '#reroll-btn', '#sprite-btn', '#sprite-fav-btn', '#music-btn', '#music-roll-btn', '#layout-sel'];
   var CSS = [
     '#hdr-gear { display: none; }',
     // closed: title, the quick buttons, status dots and ⚙; the rest behind ⚙
