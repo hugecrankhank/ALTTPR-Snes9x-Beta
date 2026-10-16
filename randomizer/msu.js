@@ -23,6 +23,37 @@ const FALLBACK = [0,
 const OVERWORLD = new Set([2, 3, 4, 5, 7, 9, 15, 60, 61]);
 const RESUME_MS = 30000;          // msu.asm MSUResumeTimer: 1800 frames
 
+// iPhone / iPad (iPadOS says it's a Mac): play songs by streaming them from the
+// file instead of decoding each whole song into memory. A decoded song is
+// 60-100 MB, and with the emulator and trackers that ran iPads out of memory
+// (lag on every song change, then Safari or the whole iPad crashing).
+// localStorage 'unified-msu-stream' = '1' / '0' forces it on or off.
+function wantStream() {
+  try { const v = localStorage.getItem('unified-msu-stream'); if (v === '1') return true; if (v === '0') return false; } catch (e) {}
+  const ua = navigator.userAgent || '';
+  return /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+}
+
+// MSU-1 .pcm is 16-bit stereo 44.1 kHz little-endian: exactly a WAV's data, so
+// a WAV header in front of a slice of the file makes it playable (no copy).
+function wavHeader(dataLen) {
+  const wav = new DataView(new ArrayBuffer(44));
+  const str = (o, x) => { for (let i = 0; i < 4; i++) wav.setUint8(o + i, x.charCodeAt(i)); };
+  str(0, 'RIFF'); wav.setUint32(4, 36 + dataLen, true); str(8, 'WAVE');
+  str(12, 'fmt '); wav.setUint32(16, 16, true); wav.setUint16(20, 1, true); wav.setUint16(22, 2, true);
+  wav.setUint32(24, RATE, true); wav.setUint32(28, RATE * 4, true); wav.setUint16(32, 4, true); wav.setUint16(34, 16, true);
+  str(36, 'data'); wav.setUint32(40, dataLen, true);
+  return wav.buffer;
+}
+async function readPcm(blob) {
+  const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
+  if (head.length < 8 || String.fromCharCode(...head.subarray(0, 4)) !== 'MSU1') throw new Error('not an MSU-1 .pcm file');
+  const loop = new DataView(head.buffer).getUint32(4, true);
+  const dataLen = Math.max(4, (blob.size - 8) & ~3);
+  const frames = dataLen / 4;
+  return { loop: loop < frames ? loop : 0, dataLen, frames };
+}
+
 /**
  * A randomizer ROM's title starts with two capitals: "VT" (alttpr.com and this
  * app's generator), "GK" (Kara's branch), "DR"/"ER"/"OR" (Door, Entrance and
@@ -57,6 +88,10 @@ export class MsuPlayer {
     this.lastFrame = -1;
     this.lastFrameAt = 0;
     this.timer = null;
+    this.useStream = wantStream();
+    this.streamFails = 0;
+    this.stream = null;           // { el, url, loop, dur, once } while streaming
+    this.loopT = null;
   }
 
   setTracks(map) { this.tracks = map; this.buffers.clear(); this.stop(); }
@@ -69,11 +104,40 @@ export class MsuPlayer {
     if (!this.ctx) {
       const AC = window.AudioContext || window.webkitAudioContext;
       if (!AC) return;
-      this.ctx = new AC();
+      try { this.ctx = new AC({ sampleRate: RATE }); } catch (e) { this.ctx = new AC(); }
       this.gain = this.ctx.createGain();
       this.gain.connect(this.ctx.destination);
     }
     if (this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+    // iOS only lets an <audio> play by itself later if it first played in a tap
+    if (this.useStream && !this.elBlessed) {
+      const el = this.audioEl();
+      if (el) {
+        this.elBlessed = true;
+        el.src = URL.createObjectURL(new Blob([wavHeader(400), new Uint8Array(400)], { type: 'audio/wav' }));
+        const p = el.play();
+        if (p && p.then) p.then(() => { if (!this.stream) el.pause(); }).catch(() => { this.elBlessed = false; });
+      }
+    }
+  }
+
+  // the one <audio> songs stream through, wired into the same volume as before
+  audioEl() {
+    if (this.el) return this.el;
+    if (!this.ctx || typeof Audio === 'undefined') return null;
+    const el = new Audio();
+    el.preload = 'auto';
+    el.setAttribute('playsinline', '');
+    try {
+      this.elNode = this.ctx.createMediaElementSource(el);
+      this.elNode.connect(this.gain);
+    } catch (e) { console.warn('[msu] streaming unavailable', e); this.useStream = false; return null; }
+    el.addEventListener('ended', () => {
+      const s = this.stream;
+      if (s && s.el === el && !s.once) { el.currentTime = s.loop; el.play().catch(() => {}); }
+    });
+    this.el = el;
+    return el;
   }
 
   start() {
@@ -92,6 +156,13 @@ export class MsuPlayer {
   restart() { this.stopSource(); this.playing = 0; this.lastCmd = 0; }
 
   stopSource() {
+    if (this.stream) {
+      const s = this.stream;
+      this.stream = null;
+      clearTimeout(this.loopT); this.loopT = null;
+      try { s.el.pause(); } catch (e) {}
+      URL.revokeObjectURL(s.url);
+    }
     if (this.source) {
       try { this.source.onended = null; this.source.stop(); } catch (e) {}
       this.source.disconnect();
@@ -125,7 +196,13 @@ export class MsuPlayer {
       if (paused && this.ctx.state === 'running') this.ctx.suspend().catch(() => {});
       if (!paused && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
     }
+    if (this.stream) {
+      const el = this.stream.el;
+      if (paused && !el.paused) { this.stream.held = true; el.pause(); }
+      else if (!paused && this.stream.held) { this.stream.held = false; el.play().catch(() => {}); }
+    }
     if (paused) return;
+    this.keepLooping();
 
     const cmd = this.ram(0x130)[0];       // LastAPUCommand: last song / F1 fade
     const vol = this.ram(0x133)[0];       // CurrentControlRequest: catches F2/F3
@@ -182,13 +259,22 @@ export class MsuPlayer {
     const t = this.pickTrack(req);
     if (t === this.playing && this.source) return;
     // remember where an overworld song was, for a quick return
-    if (this.playing && OVERWORLD.has(this.playing) && this.source && this.ctx) {
+    if (this.playing && OVERWORLD.has(this.playing) && (this.source || this.stream) && this.ctx) {
       this.resume = { track: this.playing, offset: this.position(), at: performance.now() };
     }
     this.stopSource();
     this.playing = t;
     if (!t) return;
     const token = ++this.loadToken;
+    if (this.useStream && this.ctx) {
+      try { if (await this.startStream(t, token)) return; } catch (e) {
+        console.warn('[msu] streaming track', t, 'failed, decoding it instead', e);
+        if (this.stream) this.stopSource();
+        // the browser won't stream here (blocked or unsupported): stop trying
+        if (++this.streamFails >= 2) this.useStream = false;
+      }
+      if (token !== this.loadToken) return;
+    }
     let buf;
     try { buf = await this.decode(t); } catch (e) { console.warn('[msu] track', t, e); return; }
     if (token !== this.loadToken || !this.ctx) return;
@@ -202,13 +288,15 @@ export class MsuPlayer {
     }
     src.connect(this.gain);
     let offset = 0;
+    // back on the overworld song within 30 s: carry on where it was (the cave
+    // or house song in between keeps this waiting, as msu.asm does)
     if (this.resume && this.resume.track === t && performance.now() - this.resume.at < RESUME_MS) {
       offset = this.resume.offset;
       this.level = 0;            // fade back in
+      this.resume = null;
     } else {
       this.level = this.target;
     }
-    this.resume = null;
     src.onended = () => { if (this.source === src) { this.source = null; } };
     this.source = src;
     this.startedAt = this.ctx.currentTime - offset;
@@ -216,7 +304,51 @@ export class MsuPlayer {
     src.start(0, offset);
   }
 
+  // Streaming: an <audio> playing the song straight from the file
+  async startStream(t, token) {
+    const el = this.audioEl();
+    if (!el) return false;
+    const v = this.tracks.get(t);
+    const blob = typeof v === 'function' ? await v() : v;
+    const info = await readPcm(blob);
+    if (token !== this.loadToken) return true;
+    const url = URL.createObjectURL(new Blob([wavHeader(info.dataLen), blob.slice(8, 8 + info.dataLen)], { type: 'audio/wav' }));
+    let offset = 0;
+    // back on the overworld song within 30 s: carry on where it was (the cave
+    // or house song in between keeps this waiting, as msu.asm does)
+    if (this.resume && this.resume.track === t && performance.now() - this.resume.at < RESUME_MS) {
+      offset = this.resume.offset;
+      this.level = 0;            // fade back in
+      this.resume = null;
+    } else {
+      this.level = this.target;
+    }
+    const once = PLAY_ONCE.has(t);
+    this.stream = { el, url, loop: info.loop / RATE, dur: info.frames / RATE, once, held: false };
+    this.loopInfo = { loop: info.loop / RATE, dur: info.frames / RATE, once };
+    el.src = url;
+    if (offset) {
+      const seek = () => { try { el.currentTime = offset; } catch (e) {} };
+      if (el.readyState >= 1) seek(); else el.addEventListener('loadedmetadata', seek, { once: true });
+    }
+    await el.play();
+    return true;
+  }
+
+  // jump back to the loop point right at the end of a streaming song
+  keepLooping() {
+    const s = this.stream;
+    if (!s || s.once || this.loopT || s.el.paused) return;
+    const rem = s.dur - s.el.currentTime;
+    if (rem > 0.3) return;
+    this.loopT = setTimeout(() => {
+      this.loopT = null;
+      if (this.stream === s) { try { s.el.currentTime = s.loop; } catch (e) {} }
+    }, Math.max(0, rem * 1000 - 25));
+  }
+
   position() {
+    if (this.stream) return this.stream.el.currentTime || 0;
     const p = this.ctx.currentTime - this.startedAt;
     const { loop, dur, once } = this.loopInfo || { loop: 0, dur: 0, once: true };
     if (once || p < dur) return Math.max(0, p);
@@ -247,25 +379,13 @@ export class MsuPlayer {
     // a Blob, or (zip packs) a function that unpacks the song on demand
     const v = this.tracks.get(t);
     const blob = typeof v === 'function' ? await v() : v;
-    const head = new Uint8Array(await blob.slice(0, 8).arrayBuffer());
-    if (head.length < 8 || String.fromCharCode(...head.subarray(0, 4)) !== 'MSU1') {
-      throw new Error('not an MSU-1 .pcm file');
-    }
-    const loop = new DataView(head.buffer).getUint32(4, true);
-    const dataLen = Math.max(4, (blob.size - 8) & ~3);
-    const frames = dataLen / 4;
-    const wav = new DataView(new ArrayBuffer(44));
-    const str = (o, x) => { for (let i = 0; i < 4; i++) wav.setUint8(o + i, x.charCodeAt(i)); };
-    str(0, 'RIFF'); wav.setUint32(4, 36 + dataLen, true); str(8, 'WAVE');
-    str(12, 'fmt '); wav.setUint32(16, 16, true); wav.setUint16(20, 1, true); wav.setUint16(22, 2, true);
-    wav.setUint32(24, RATE, true); wav.setUint32(28, RATE * 4, true); wav.setUint16(32, 4, true); wav.setUint16(34, 16, true);
-    str(36, 'data'); wav.setUint32(40, dataLen, true);
-    const bytes = await new Blob([wav.buffer, blob.slice(8, 8 + dataLen)]).arrayBuffer();
+    const info = await readPcm(blob);
+    const bytes = await new Blob([wavHeader(info.dataLen), blob.slice(8, 8 + info.dataLen)]).arrayBuffer();
     const audio = await new Promise((ok, bad) => {
       const p = this.ctx.decodeAudioData(bytes, ok, bad);
       if (p && p.catch) p.catch(() => {});
     });
-    const entry = { audio, loop: loop < frames ? loop : 0 };
+    const entry = { audio, loop: info.loop };
     // keep only a couple of decoded songs (they're large)
     if (this.buffers.size >= 2) this.buffers.delete(this.buffers.keys().next().value);
     this.buffers.set(t, entry);
