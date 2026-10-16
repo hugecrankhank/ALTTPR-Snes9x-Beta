@@ -1,12 +1,13 @@
 {
  "edition": "full",
- "version": "531e536856f2",
+ "version": "b482a9b9cee6",
  "cache": "alttpr-s9x-full-v1",
  "files": [
   "./",
   "bridge/sni-bridge.js",
   "bridge/sni-shim.js",
   "crowd/effects.js",
+  "compact-header.js",
   "desktop.js",
   "icons/apple-touch-icon.png",
   "icons/favicon-32.png",
